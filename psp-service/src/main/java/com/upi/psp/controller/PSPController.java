@@ -30,7 +30,7 @@ public class PSPController {
 
     // GET /psp/vpa/{userId} → get all VPAs of a user
     @GetMapping("/vpa/{userId}")
-    public ResponseEntity<ApiResponse<List<VPAResponse>>> getVPAs(@PathVariable UUID userId) {
+    public ResponseEntity<ApiResponse<List<VPAResponse>>> getVPAs(@PathVariable String userId) {
         List<VPAResponse> list = vpaService.getVPAsByUser(userId);
         return ResponseEntity.ok(new ApiResponse<>("SUCCESS", "Fetched VPAs", list));
     }

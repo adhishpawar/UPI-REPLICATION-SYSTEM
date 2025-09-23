@@ -14,7 +14,7 @@ import java.util.UUID;
 @Table(name = "transactions")
 public class Transaction {
     @Id
-    private String txId = UUID.randomUUID().toString();
+    private String txId;
 
     private String fromVpa;     // payer VPA
     private String toVpa;       // payee VPA
@@ -25,4 +25,15 @@ public class Transaction {
     private String npciTxnId;   // reference from NPCI
     private Instant createdAt = Instant.now();
     private Instant updatedAt = Instant.now();
+
+    @PrePersist
+    public void generateTxId() {
+        this.txId = generateTransactionId();
+    }
+
+    private String generateTransactionId() {
+        String prefix = "TXN";  // Custom prefix
+        UUID uuid = UUID.randomUUID();
+        return prefix + uuid.toString().replace("-", "").substring(0, 12).toUpperCase();
+    }
 }

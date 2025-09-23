@@ -14,5 +14,5 @@ public interface VpaRepository extends JpaRepository<VPA, String> {
 
     boolean existsByVpaAddress(String vpaAddress);
 
-    List<VPA> findByUserId(UUID userId);
+    List<VPA> findByUserId(String userId);
 }

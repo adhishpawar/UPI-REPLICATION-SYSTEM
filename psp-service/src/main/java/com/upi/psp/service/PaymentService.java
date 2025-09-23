@@ -3,7 +3,6 @@ package com.upi.psp.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.upi.psp.dto.*;
 import com.upi.psp.model.VPA;
-import com.upi.psp.dto.PaymentInitResponse;
 import com.upi.psp.repo.VpaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.ParameterizedTypeReference;
@@ -15,7 +14,6 @@ import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.util.Optional;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -25,7 +23,6 @@ public class PaymentService {
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
-
 
     private static final String BANK_SERVICE_URL = "http://localhost:8081/accounts"; // ✅ BankService base URL
 
@@ -44,7 +41,7 @@ public class PaymentService {
         }
 
         // Generate new TxId for this transaction
-        String txId = "TXN" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String txId = "TXN" + String.valueOf(System.currentTimeMillis()).substring(0, 8).toUpperCase();
 
         // For now we simulate NPCI routing
         return new PaymentInitResponse(txId, "INITIATED", "Sent to NPCI for routing");

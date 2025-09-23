@@ -8,7 +8,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class VPARequest {
-    private UUID userId;
+    private String userId;
     private String pspId;
     private String bankAccountId;
 }

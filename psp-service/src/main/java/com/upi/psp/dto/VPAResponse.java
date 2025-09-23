@@ -12,7 +12,7 @@ import java.util.UUID;
 @NoArgsConstructor
 public class VPAResponse {
     private String vpaId;
-    private UUID userId;
+    private String userId;
     private String vpaAddress;
     private String pspId;
     private String bankAccountId;

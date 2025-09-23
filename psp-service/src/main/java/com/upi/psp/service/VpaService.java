@@ -13,7 +13,6 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -29,7 +28,11 @@ public class VpaService {
     private static final String BANK_SERVICE_URL = "http://localhost:8081"; // Bank service base
 
     public VPA createVPA(VPARequest req) {
+        // Debug: Start of method execution
+        System.out.println("Creating VPA for User ID: " + req.getUserId());
+
         // Fetch accounts from Bank Service
+        System.out.println("Fetching accounts for user: " + req.getUserId());
         ResponseEntity<ApiResponse<List<BankAccountResponse>>> response =
                 restTemplate.exchange(
                         BANK_SERVICE_URL + "/accounts/" + req.getUserId(),
@@ -40,33 +43,60 @@ public class VpaService {
 
         List<BankAccountResponse> accounts = response.getBody().getData();
 
+        // Debug: List of fetched accounts
+        System.out.println("Fetched bank accounts: " + accounts);
+
         // Choose primary account
         BankAccountResponse primaryAccount = accounts.stream()
                 .filter(BankAccountResponse::isPrimary)
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("No primary account found for user"));
 
+        // Debug: Primary account chosen
+        System.out.println("Primary account found: " + primaryAccount);
+
         // Auto-generate VPA (userName@upiHandle)
         String vpaAddress = req.getUserId().toString().substring(0, 6)
                 + "@" + primaryAccount.getBankId().toString().substring(0, 4);
 
+        // Debug: Generated VPA Address
+        System.out.println("Generated VPA Address: " + vpaAddress);
+
+        // Check if VPA already exists
         if (vpaRepository.existsByVpaAddress(vpaAddress)) {
+            // Debug: VPA exists
+            System.out.println("VPA already exists: " + vpaAddress);
             throw new RuntimeException("VPA already exists: " + vpaAddress);
         }
 
+        // Create VPA object
         VPA vpa = new VPA();
-        vpa.setVpaId(UUID.randomUUID().toString());
+        vpa.setVpaId(String.valueOf(System.currentTimeMillis())); // Updated to String
+
+        // Debug: VPA ID
+        System.out.println("Generated VPA ID: " + vpa.getVpaId());
+
         vpa.setUserId(req.getUserId());
         vpa.setBankAccountId(primaryAccount.getAccountId().toString());
         vpa.setPspId(req.getPspId());
         vpa.setVpaAddress(vpaAddress);
         vpa.setCreatedAt(Instant.now());
 
-        return vpaRepository.save(vpa);
+        // Debug: VPA details before saving
+        System.out.println("VPA details to save: " + vpa);
+
+        // Save VPA and return
+        VPA savedVpa = vpaRepository.save(vpa);
+
+        // Debug: VPA saved successfully
+        System.out.println("VPA saved successfully: " + savedVpa);
+
+        return savedVpa;
     }
 
 
-    public List<VPAResponse> getVPAsByUser(UUID userId) {
+
+    public List<VPAResponse> getVPAsByUser(String userId) {
         return vpaRepository.findByUserId(userId)
                 .stream()
                 .map(VPAResponse::from)

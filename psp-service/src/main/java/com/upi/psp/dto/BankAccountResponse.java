@@ -7,7 +7,7 @@ import java.util.UUID;
 @Data
 public class BankAccountResponse {
     private String accountId;
-    private UUID userId;
+    private String userId;
     private String bankId;
     private String accountNumber;
     private String ifscCode;
