@@ -28,8 +28,6 @@ public class VpaService {
     private static final String BANK_SERVICE_URL = "http://localhost:8081"; // Bank service base
 
     public VPA createVPA(VPARequest req) {
-        // Debug: Start of method execution
-        System.out.println("Creating VPA for User ID: " + req.getUserId());
 
         // Fetch accounts from Bank Service
         System.out.println("Fetching accounts for user: " + req.getUserId());
@@ -43,8 +41,6 @@ public class VpaService {
 
         List<BankAccountResponse> accounts = response.getBody().getData();
 
-        // Debug: List of fetched accounts
-        System.out.println("Fetched bank accounts: " + accounts);
 
         // Choose primary account
         BankAccountResponse primaryAccount = accounts.stream()
@@ -52,15 +48,9 @@ public class VpaService {
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("No primary account found for user"));
 
-        // Debug: Primary account chosen
-        System.out.println("Primary account found: " + primaryAccount);
-
         // Auto-generate VPA (userName@upiHandle)
         String vpaAddress = req.getUserId().toString().substring(0, 6)
                 + "@" + primaryAccount.getBankId().toString().substring(0, 4);
-
-        // Debug: Generated VPA Address
-        System.out.println("Generated VPA Address: " + vpaAddress);
 
         // Check if VPA already exists
         if (vpaRepository.existsByVpaAddress(vpaAddress)) {
@@ -73,23 +63,15 @@ public class VpaService {
         VPA vpa = new VPA();
         vpa.setVpaId(String.valueOf(System.currentTimeMillis())); // Updated to String
 
-        // Debug: VPA ID
-        System.out.println("Generated VPA ID: " + vpa.getVpaId());
-
         vpa.setUserId(req.getUserId());
         vpa.setBankAccountId(primaryAccount.getAccountId().toString());
         vpa.setPspId(req.getPspId());
         vpa.setVpaAddress(vpaAddress);
         vpa.setCreatedAt(Instant.now());
 
-        // Debug: VPA details before saving
-        System.out.println("VPA details to save: " + vpa);
 
         // Save VPA and return
         VPA savedVpa = vpaRepository.save(vpa);
-
-        // Debug: VPA saved successfully
-        System.out.println("VPA saved successfully: " + savedVpa);
 
         return savedVpa;
     }
