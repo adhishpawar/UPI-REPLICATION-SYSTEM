@@ -1,0 +1,54 @@
+# resources/application.yml
+spring:
+  application:
+    name: vpa-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/vpa_db
+    username: postgres
+    password: root
+    driver-class-name: org.postgresql.Driver
+    hikari:                         # Connection pool config
+      pool-name: VpaServicePool
+      maximum-pool-size: 10         # Max DB connections from this service
+      minimum-idle: 2               # Keep 2 connections warm at all times
+      connection-timeout: 30000     # 30s wait for connection from pool
+      idle-timeout: 600000          # Remove idle connections after 10 min
+      max-lifetime: 1800000         # Recycle connections after 30 min
+
+  jpa:
+    hibernate:
+      ddl-auto: validate            # NEVER use 'create' or 'update' in any env
+      # validate = Hibernate checks schema matches entities but doesn't change it
+      # Flyway manages schema — Hibernate just validates
+    show-sql: false                 # Set to true only for debugging
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        default_batch_fetch_size: 10
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+server:
+  port: 8081
+  servlet:
+    context-path: /
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.upi.vpa: DEBUG             # Your code: DEBUG level
+    org.springframework: INFO       # Framework: INFO level
+    org.hibernate.SQL: WARN        # SQL: only show on WARN
