@@ -1,0 +1,86 @@
+# docker-compose.yml — UPI Replication Infrastructure Stack
+# Run with: docker compose up -d
+# Stop with: docker compose down
+
+version: '3.8'
+
+services:
+
+  # ─── PostgreSQL — Single instance, 7 separate databases ────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: upi_postgres
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: upi_admin
+      POSTGRES_PASSWORD: upi_secret_2025
+      POSTGRES_DB: vpa_db           # default db; others created by init script
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U upi_admin -d vpa_db']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - upi_network
+
+  # ─── Apache Kafka — KRaft mode (no Zookeeper) ──────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: upi_kafka
+    ports:
+      - '9092:9092'
+      - '9101:9101'
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    healthcheck:
+      test: ['CMD', 'kafka-topics', '--bootstrap-server', 'localhost:9092', '--list']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - upi_network
+
+  # ─── Kafka UI — Visual topic inspector ─────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: upi_kafka_ui
+    ports:
+      - '8090:8080'
+    environment:
+      KAFKA_CLUSTERS_0_NAME: upi-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - upi_network
+
+  # ─── Zipkin — Distributed Tracing ──────────────────────────────────────
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: upi_zipkin
+    ports:
+      - '9411:9411'
+    networks:
+      - upi_network
+
+volumes:
+  postgres_data:
+
+networks:
+  upi_network:
+    driver: bridge
