@@ -43,4 +43,12 @@ public class GlobalExceptionHandler {
         return ErrorResponse.of("INTERNAL_ERROR","An unexpected error occurred", HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    // Handles duplicate VPA → HTTP 409
+    @ExceptionHandler(VpaDuplicateException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleDuplicate(VpaDuplicateException ex) {
+        log.warn("Duplicate VPA: {}", ex.getMessage());
+        return ErrorResponse.of(ex.getErrorCode(), ex.getMessage(), HttpStatus.CONFLICT);
+    }
+
 }

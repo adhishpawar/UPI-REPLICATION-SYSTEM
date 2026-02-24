@@ -1,5 +1,8 @@
 package com.upi.vpa_service.exception;
 
+import lombok.Getter;
+
+@Getter
 public abstract class VpaBaseException extends RuntimeException{
     private final String errorCode;
     public VpaBaseException(String message, String errorCode)
@@ -8,8 +11,4 @@ public abstract class VpaBaseException extends RuntimeException{
         this.errorCode = errorCode;
     }
 
-    public String getErrorCode()
-    {
-        return errorCode;
-    }
 }
