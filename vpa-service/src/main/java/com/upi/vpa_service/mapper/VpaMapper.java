@@ -4,10 +4,11 @@ import com.upi.vpa_service.domain.dto.VpaRegistrationRequest;
 import com.upi.vpa_service.domain.dto.VpaRegistrationResponse;
 import com.upi.vpa_service.domain.dto.VpaResolutionResponse;
 import com.upi.vpa_service.domain.entity.VpaRegistration;
+import org.springframework.stereotype.Component;
 
 import java.util.Base64;
 
-
+@Component
 public class VpaMapper {
 
     public VpaRegistration toEntity(VpaRegistrationRequest request) {

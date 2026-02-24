@@ -15,6 +15,7 @@ import com.upi.vpa_service.util.VpaValidator;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,12 +26,15 @@ import java.util.UUID;
 @Service
 @Slf4j                      //For logging
 @RequiredArgsConstructor   // preferred over @Autowired
-@NoArgsConstructor(force = true)
+
 public class VpaServiceImpl implements VpaService {
 
-    private final VpaRepository vpaRepository;
-    private final VpaMapper vpaMapper;
-    private final VpaValidator vpaValidator;
+    @Autowired
+    private  VpaRepository vpaRepository;
+    @Autowired
+    private  VpaMapper vpaMapper;
+    @Autowired
+    private VpaValidator vpaValidator;
 
     // Allowed PSP handles — stored in a HashSet for O(1) lookup
     private static final Set<String> ALLOWED_HANDLES = Set.of(
@@ -71,7 +75,7 @@ public class VpaServiceImpl implements VpaService {
     @Override
     @Transactional(readOnly = true) //No write optimize reads
     public VpaResolutionResponse resolveVpa(String vpaAddress) {
-        return vpaRepository.findByVpaAddressAndIsActive(vpaAddress)
+        return vpaRepository.findByVpaAddressAndIsActiveTrue(vpaAddress)
                 .map(vpaMapper::toResolutionResponse)
                 .orElseThrow(() -> new VpaNotFoundException(vpaAddress));
     }

@@ -1,6 +1,7 @@
 package com.upi.vpa_service.repository;
 
 import com.upi.vpa_service.domain.entity.VpaRegistration;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -9,12 +10,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-@Repository
-public interface VpaRepository {
+//@Repository
+public interface VpaRepository  extends JpaRepository<VpaRegistration, UUID> {
 
     Optional<VpaRegistration> findByVpaAddress(String vpaAddress);
 
-    Optional<VpaRegistration> findByVpaAddressAndIsActive(String vpaAddress);
+    Optional<VpaRegistration> findByVpaAddressAndIsActiveTrue(String vpaAddress);
 
     List<VpaRegistration> findByUserId(UUID userId);
 
