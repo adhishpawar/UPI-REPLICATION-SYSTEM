@@ -94,7 +94,54 @@
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
         </dependency>
-    </dependencies>
+
+		<!-- 🔐 PSP Security Stack     -->
+		<!-- ========================= -->
+
+		<!-- Spring Security -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+
+		<!-- JJWT — JWT library (required 3 modules) -->
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-api</artifactId>
+			<version>0.11.5</version>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-impl</artifactId>
+			<version>0.11.5</version>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-jackson</artifactId>
+			<version>0.11.5</version>
+			<scope>runtime</scope>
+		</dependency>
+
+		<!-- Nimbus JOSE — JWK Set endpoint support -->
+		<dependency>
+			<groupId>com.nimbusds</groupId>
+			<artifactId>nimbus-jose-jwt</artifactId>
+			<version>9.37</version>
+		</dependency>
+
+		<!-- Source: https://mvnrepository.com/artifact/com.github.vladimir-bukhtoyarov/bucket4j-core -->
+		<dependency>
+			<groupId>com.github.vladimir-bukhtoyarov</groupId>
+			<artifactId>bucket4j-core</artifactId>
+			<version>7.6.0</version>
+			<scope>compile</scope>
+		</dependency>
+
+
+
+
+	</dependencies>
 	<dependencyManagement>
 		<dependencies>
 			<dependency>
