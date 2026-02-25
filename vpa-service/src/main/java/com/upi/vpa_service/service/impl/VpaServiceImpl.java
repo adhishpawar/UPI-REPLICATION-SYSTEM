@@ -19,9 +19,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j                      //For logging
@@ -98,14 +100,20 @@ public class VpaServiceImpl implements VpaService {
     }
 
     @Override
-    public boolean isVpaActive(String vpaAddress) {
-        return false;
+    public boolean isVpaActive(String vpaAddress)
+    {
+        return vpaRepository.existsByVpaAddressAndIsActiveTrue(vpaAddress);
     }
 
     @Override
     public List<VpaRegistrationResponse> getVpasByUserId(UUID userId) {
-        return null;
+        List<VpaRegistration> vpaRegistrations = vpaRepository. findByUserId(userId);
+
+        return vpaRegistrations.stream()
+                .map(vpa -> vpaMapper.toRegistrationResponse(vpa))
+                .collect(Collectors.toList());
     }
+
 
     //Helper
     private String extractHandle(String vpaAddress)

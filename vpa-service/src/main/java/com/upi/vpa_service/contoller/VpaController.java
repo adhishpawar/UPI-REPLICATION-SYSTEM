@@ -44,7 +44,7 @@ public class VpaController {
         return vpaService.resolveVpa(vpaAddress.toLowerCase().trim());
     }
 
-    @DeleteMapping("/vpaAddress")
+    @DeleteMapping("/{vpaAddress}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Deactivate A VPA (soft delete)")
     public void deactivateVpa(@PathVariable String vpaAddress, @RequestHeader("X-user-Id") UUID requestingUserId)
