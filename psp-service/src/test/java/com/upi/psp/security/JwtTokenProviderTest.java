@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class JwtTokenProviderTest {
 
     @Autowired
-    JwtTokenProvider jwtTokenProvider;
+    SecurityConfig jwtTokenProvider;
 
     private final UUID TEST_USER_ID  = UUID.randomUUID();
     private final String TEST_DEVICE = "device-abc-123";
