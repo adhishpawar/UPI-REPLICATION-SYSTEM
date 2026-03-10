@@ -1,15 +1,19 @@
 package com.upi.psp.domain.entity;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.boot.actuate.autoconfigure.wavefront.WavefrontProperties;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-import org.springframework.security.oauth2.core.OAuth2AccessToken;
+
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
 @Table(name = "auth_tokens")
+@Getter
+@Setter
 @EntityListeners(AuditingEntityListener.class)
 public class AuthToken {
 
