@@ -7,7 +7,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import javax.sound.midi.InvalidMidiDataException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -99,7 +98,7 @@ public class JwtTokenProvider {
             byte[] hash = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));
             //Convert bytes to hex String
             //JAVA Streams --> IntStream over byte array ==> hex chars ==> joined
-            return IntStream.range(-, hash.length)
+            return IntStream.range(0, hash.length)
                     .mapToObj(i -> String.format("%02x", hash[i] & 0xff))
                     .collect(Collectors.joining());
         } catch (NoSuchAlgorithmException e) {

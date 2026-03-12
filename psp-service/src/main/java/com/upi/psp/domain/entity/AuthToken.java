@@ -1,9 +1,9 @@
 package com.upi.psp.domain.entity;
 
+import com.upi.psp.domain.enums.TokenType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.boot.actuate.autoconfigure.wavefront.WavefrontProperties;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 
@@ -30,7 +30,7 @@ public class AuthToken {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "token_type", nullable = false, length = 10)
-    private WavefrontProperties.TokenType tokenType;
+    private TokenType tokenType;
 
     @Column(name = "device_id", nullable = false)
     private String deviceId;
@@ -47,4 +47,7 @@ public class AuthToken {
     @Column(name = "revoked_at")
     private LocalDateTime revokedAt;
 
+    public void setTokenType(TokenType tokenType) {
+        this.tokenType = tokenType;
+    }
 }

@@ -15,6 +15,8 @@ public class TokenValidationResponse {
     // true if JWT is valid, not expired, not revoked.
     private boolean valid;
 
+    private UUID userId;
+
     // Extracted from JWT 'sub' claim. Null if valid=false.
     private String deviceId;
 

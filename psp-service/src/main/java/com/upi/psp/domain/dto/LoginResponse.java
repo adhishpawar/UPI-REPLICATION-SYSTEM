@@ -1,7 +1,9 @@
 package com.upi.psp.domain.dto;
 
-import lombok.*;
-import org.hibernate.validator.constraints.UUID;
+import lombok.Builder;
+import lombok.Getter;
+
+import java.util.UUID;
 
 
 @Getter

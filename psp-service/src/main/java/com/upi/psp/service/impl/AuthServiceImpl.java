@@ -4,7 +4,9 @@ import com.upi.psp.domain.dto.*;
 import com.upi.psp.domain.entity.AuthToken;
 import com.upi.psp.domain.entity.LoginAttempt;
 import com.upi.psp.domain.entity.User;
+import com.upi.psp.domain.enums.TokenType;
 import com.upi.psp.domain.enums.UserStatus;
+import com.upi.psp.exception.*;
 import com.upi.psp.mapper.AuthMapper;
 import com.upi.psp.ratelimiter.LoginRateLimiter;
 import com.upi.psp.repo.AuthTokenRepository;
@@ -12,16 +14,17 @@ import com.upi.psp.repo.LoginAttemptRepository;
 import com.upi.psp.repo.UserRepository;
 import com.upi.psp.security.JwtTokenProvider;
 import com.upi.psp.service.AuthService;
+import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.InvalidIsolationLevelException;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.security.auth.login.AccountLockedException;
 import java.time.LocalDateTime;
-
+import java.time.ZoneId;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -39,19 +42,20 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public UserRegistrationResponse registerUser(UserRegistrationRequest request) {
-
-        //Normalize the mobile number
+        // Step 1: Normalize mobile number to E.164 format
         String normalizedMobile = normalizeMobile(request.getMobileNumber());
 
+        // Step 2: Hash device fingerprint — never store raw fingerprint
         String deviceFpHash = hashDeviceFingerprint(request.getDeviceFingerprint());
 
-        if(userRepository.existsByMobileNumberAndDeviceId(
-                normalizedMobile, request.getDeviceId()
-        )){
+        // Step 3: Check if this mobile+device combo already registered
+        if (userRepository.existsByMobileNumberAndDeviceId(
+                normalizedMobile, request.getDeviceId())) {
             throw new UserAlreadyExistsException(
-                    "Device already registered for this Mobile Number"
-            );
+                    "Device already registered for this mobile number");
         }
+
+        // Step 4: Build and save user entity
         User user = new User();
         user.setMobileNumber(normalizedMobile);
         user.setDeviceId(request.getDeviceId());
@@ -70,6 +74,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void setupMpin(MpinSetupRequest request) {
+        // SECURITY: We log userId but NEVER the MPIN itself
         log.info("MPIN setup for userId={}", request.getUserId());
 
         User user = userRepository.findById(request.getUserId())
@@ -92,66 +97,62 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @Transactional
     public LoginResponse login(LoginRequest request) throws AccountLockedException {
         String normalizedMobile = normalizeMobile(request.getMobileNumber());
 
-        //S1 rate Limit check --> o(1) lookup Bucket4j
-        if(!rateLimiter.tryConsume(normalizedMobile))
-        {
-            //Record failed attempt for audit
+        // Step 1: Rate limit check — Bucket4j O(1) lookup
+        if (!rateLimiter.tryConsume(normalizedMobile)) {
+            // Record failed attempt for audit
             recordLoginAttempt(normalizedMobile, request.getDeviceId(), false, "RATE_LIMITED");
-            throw new TooManyLoginAttemptException(
-                    "Too Many login Attempts. Try again in 15 minutes"
-            );
+            throw new TooManyLoginAttemptsException(
+                    "Too many login attempts. Try again in 15 minutes.");
         }
 
-        //S2 Find User
-        User user = userRepository.findByMobileNumberAndDeviceId(normalizedMobile, request.getDeviceId())
+        // Step 2: Find user
+        User user = userRepository
+                .findByMobileNumberAndDeviceId(normalizedMobile, request.getDeviceId())
                 .orElseThrow(() -> {
-                    recordLoginAttempt(normalizedMobile, request.getDeviceId(), false, "USER_NOT_FOUND");
+                    recordLoginAttempt(normalizedMobile, request.getDeviceId(),
+                            false, "USER_NOT_FOUND");
                     return new InvalidCredentialsException("Invalid credentials");
-                    //Generic message --> don't reveal if user exists
+                    // Note: generic error message — don't reveal if user exists
                 });
-        //S3 Check account status
-        if(!user.getIsActive() || user.getStatus() == UserStatus.LOCKED){
-            throw new AccountLockedException("Account is locked pr inactive");
-        }
 
-        if(user.getStatus() != UserStatus.ACTIVE)
-        {
+        // Step 3: Check account status
+        if (!user.getIsActive() || user.getStatus() == UserStatus.LOCKED) {
+            throw new AccountLockedException("Account is locked or inactive");
+        }
+        if (user.getStatus() != UserStatus.ACTIVE) {
             throw new MpinNotSetException("MPIN setup not completed");
         }
 
-
-        //S4  Verify the MPIN -> BCrypt.matches() is the only place MPIN is used
-        //takes 300ms intentionally --> work factor 12
-
-        if(!passwordEncoder.matches(request.getMpin(), user.getMpinHash()))
-        {
+        // Step 4: Verify MPIN — BCrypt.matches() is the only place MPIN is used
+        // This takes ~300ms intentionally (BCrypt work factor 12)
+        if (!passwordEncoder.matches(request.getMpin(), user.getMpinHash())) {
+            // Increment failed count
             user.setFailedLoginCount(user.getFailedLoginCount() + 1);
             user.setLastFailedLoginAt(LocalDateTime.now());
-
-            //Auto lock after 10 failures
-            if(user.getFailedLoginCount() >= 10)
-            {
+            // Auto-lock after 10 failures
+            if (user.getFailedLoginCount() >= 10) {
                 user.setStatus(UserStatus.LOCKED);
-                log.warn("Account auto Locked: user={}", user.getUserId());
+                log.warn("Account auto-locked: userId={}", user.getUserId());
             }
             userRepository.save(user);
-            recordLoginAttempt(normalizedMobile, request.getDeviceId(), false, "INVALID_MPIN");
-            throw new InvalidCredentailException("Invalid credentials");
+            recordLoginAttempt(normalizedMobile, request.getDeviceId(),
+                    false, "INVALID_MPIN");
+            throw new InvalidCredentialsException("Invalid credentials");
         }
 
-        //S5 Login Successful reset Failed count
+        // Step 5: Login successful — reset failed count
         user.setFailedLoginCount(0);
         userRepository.save(user);
 
-        //S6 generate JWT
+        // Step 6: Generate JWT
         String rawToken = jwtTokenProvider.generateToken(
-                user.getUserId(), user.getDeviceId()
-        );
+                user.getUserId(), user.getDeviceId());
 
-        //S7 Store token record (Hash Only and now raw JWT)
+        // Step 7: Store token record (hash only, not raw JWT)
         AuthToken tokenRecord = new AuthToken();
         tokenRecord.setUserId(user.getUserId());
         tokenRecord.setTokenHash(jwtTokenProvider.hashToken(rawToken));
@@ -166,13 +167,13 @@ public class AuthServiceImpl implements AuthService {
 
         log.info("Login successful: userId={}", user.getUserId());
 
-        return LoginResponse.builder()
-                .accessToken(rawToken)
-                .userId(user.getUserId())
-                .tokenType("Bearer")
-                .expiresIn(3600L)
+        LoginResponse.LoginResponseBuilder builder = LoginResponse.builder();
+        builder.accessToken(rawToken);
+        builder.userId(user.getUserId());
+        builder.tokenType("Bearer");
+        builder.expiresIn(3600L);
+        return builder
                 .build();
-
     }
 
     @Override
@@ -187,26 +188,28 @@ public class AuthServiceImpl implements AuthService {
                 });
     }
 
-
-    //Private Helpers
-    //Normalize Number --> String Manipulation O(n)
-
-    private String normalizeMobile(String mobile)
-    {
-        String digits = mobile.replaceAll("[^0-9]", "");
-        if(digits.length() == 10) return "+91" + digits;;
-        if(digits.length() == 12 && digits.startsWith("91")) return "+" + digits;
-        if(digits.startsWith("+")) return mobile;
-        throw  new InvalidMobileNumberException("Cannot  normalize mobile: " + mobile);
+    public TokenValidationResponse validateToken(String rawToken) {
+        return null;
     }
 
-    private String hashDeviceFingerprint(String fingerprint)
-    {
-        return jwtTokenProvider.hashToken(fingerprint);
+    // ── Private helpers ─────────────────────────────────────────────────
+
+    // Normalize to E.164: +91XXXXXXXXXX
+    // Algorithm: String manipulation — O(n) string length
+    private String normalizeMobile(String mobile) {
+        String digits = mobile.replaceAll("[^0-9]", "");  // Strip non-digits
+        if (digits.length() == 10) return "+91" + digits;  // Add country code
+        if (digits.length() == 12 && digits.startsWith("91")) return "+" + digits;
+        if (digits.startsWith("+")) return mobile;
+        throw new InvalidMobileNumberException("Cannot normalize mobile: " + mobile);
     }
 
-    private void recordLoginAttempt(String mobile, String deviceId, boolean success, String reason)
-    {
+    private String hashDeviceFingerprint(String fingerprint) {
+        return jwtTokenProvider.hashToken(fingerprint); // Reuse SHA-256 utility
+    }
+
+    private void recordLoginAttempt(String mobile, String deviceId,
+                                    boolean success, String reason) {
         LoginAttempt attempt = new LoginAttempt();
         attempt.setMobileNumber(mobile);
         attempt.setDeviceId(deviceId);
@@ -215,5 +218,69 @@ public class AuthServiceImpl implements AuthService {
         attempt.setAttemptedAt(LocalDateTime.now());
         loginAttemptRepository.save(attempt);
     }
+}
 
+
+/*
+ * ADD THIS METHOD to the existing AuthServiceImpl class:
+ */
+public class AuthServiceImpl_validateToken_addition {
+
+    /*
+     * @Override
+     * @Transactional(readOnly = true)
+     */
+    public TokenValidationResponse validateToken(String rawToken) {
+
+        // Step 1: Cryptographic validation — verifies RS256 signature + expiry
+        // Throws TokenExpiredException or InvalidTokenException on failure
+        Claims claims;
+        try {
+            claims = jwtTokenProvider.validateAndExtractClaims(rawToken);
+        } catch (TokenExpiredException | InvalidTokenException ex) {
+            // Return a valid response object with valid=false (don't throw here —
+            // the Gateway expects a 200 response with valid=false, not a 401)
+            return TokenValidationResponse.builder()
+                    .valid(false)
+                    .invalidReason(ex.getMessage())
+                    .build();
+        }
+
+        // Step 2: Check revocation status in DB
+        // A token can be cryptographically valid but revoked (user logged out)
+        String tokenHash = jwtTokenProvider.hashToken(rawToken);
+        boolean isRevoked = authTokenRepository
+                .findByTokenHashAndIsRevokedFalse(tokenHash)
+                .isEmpty(); // empty → not found in active tokens → revoked or never stored
+
+        if (isRevoked) {
+            return TokenValidationResponse.builder()
+                    .valid(false)
+                    .invalidReason("Token has been revoked")
+                    .build();
+        }
+
+        // Step 3: Build successful validation response
+        // Extract expiry from claims and convert from java.util.Date to LocalDateTime
+        LocalDateTime expiresAt = claims.getExpiration()
+                .toInstant()
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime();
+
+        // Extract roles — stored as List<String> in JWT claims
+        @SuppressWarnings("unchecked")
+        List<String> roles = claims.get("roles", List.class);
+
+        return TokenValidationResponse.builder()
+                .valid(true)
+                .userId(java.util.UUID.fromString(claims.getSubject()))
+                .deviceId(claims.get("deviceId", String.class))
+                .roles(roles != null ? roles : List.of("ROLE_USER"))
+                .expiresAt(expiresAt)
+                .build();
+    }
+
+    // These are fields already declared in AuthServiceImpl — shown here for reference:
+    private com.upi.psp.security.JwtTokenProvider jwtTokenProvider = null;
+    private com.upi.psp.repo.AuthTokenRepository authTokenRepository = null;
 }

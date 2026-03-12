@@ -1,6 +1,27 @@
 package com.upi.psp.service;
 
-import com.upi.psp.domain.dto.TokenValidationResponse;
+// ─────────────────────────────────────────────────────────────────────────────
+// ROLE: Service interface — the contract defining WHAT the auth service does,
+//       not HOW it does it.
+//
+// LOGIC / WHY INTERFACE:
+//   1. TESTABILITY: In unit tests, we use @MockBean AuthService — we inject a
+//      Mockito mock of this interface into AuthController tests. If AuthController
+//      depended on AuthServiceImpl directly, we'd need the full Spring context
+//      and a real database running in every test.
+//
+//   2. OPEN/CLOSED PRINCIPLE: If we ever need a different implementation
+//      (e.g. OAuthServiceImpl for social login), we add a new class implementing
+//      this interface without changing AuthController at all.
+//
+//   3. DEPENDENCY INVERSION: AuthController depends on this abstraction, not a
+//      concrete class. High-level modules (controller) shouldn't depend on
+//      low-level modules (service impl) — they should both depend on abstractions.
+//
+// JAVA CONCEPT: Interface methods are implicitly public abstract. No need to
+//   write 'public abstract' — just the return type and method name.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import com.upi.psp.domain.dto.*;
 
 import javax.security.auth.login.AccountLockedException;
@@ -60,6 +81,4 @@ public interface AuthService {
      * @return validation result with extracted userId and deviceId
      */
     TokenValidationResponse validateToken(String rawToken);
-
-
 }
