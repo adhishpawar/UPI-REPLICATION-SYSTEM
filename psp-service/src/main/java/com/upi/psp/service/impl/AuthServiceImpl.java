@@ -61,6 +61,8 @@ public class AuthServiceImpl implements AuthService {
         user.setDeviceId(request.getDeviceId());
         user.setDeviceFingerprint(deviceFpHash);
         user.setStatus(UserStatus.PENDING_MPIN);
+        user.setCreatedAt(LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
         // mpinHash intentionally NOT set — null until setupMpin called
 
         User saved = userRepository.save(user);
