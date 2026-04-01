@@ -23,7 +23,6 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
-import java.util.logging.Logger;
 
 @Repository
 public interface LoginAttemptRepository extends JpaRepository<LoginAttempt, UUID>{
@@ -48,7 +47,7 @@ public interface LoginAttemptRepository extends JpaRepository<LoginAttempt, UUID
      * Get recent attempts for a mobile number (for security dashboard).
      * Ordered by most recent first. Limited by caller to avoid loading millions of rows.
      */
-    List<LoginAttempt> findTop20ByMobileNumberOrderByAttemptedArDesc(String mobileNumber);
+    List<LoginAttempt> findTop20ByMobileNumberOrderByAttemptedAtDesc(String mobileNumber);
 
     /**
      * Get all attempts from a specific IP address within a time window.

@@ -224,7 +224,7 @@ public class AuthServiceImpl implements AuthService {
 /*
  * ADD THIS METHOD to the existing AuthServiceImpl class:
  */
-public class AuthServiceImpl_validateToken_addition {
+class AuthServiceImpl_validateToken_addition {
 
     /*
      * @Override

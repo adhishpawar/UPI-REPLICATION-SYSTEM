@@ -16,6 +16,6 @@ public class LoginRequest {
 
     @NotBlank @Pattern(regexp = "^[0-9]{4,6}$")
     @ToString.Exclude  // NEVER include MPIN in logs via toString()
-    private String mpin
+    private String mpin;
 
 }

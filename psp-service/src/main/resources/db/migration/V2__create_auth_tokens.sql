@@ -1,6 +1,6 @@
 -- V2__create_auth_tokens.sql
 
-CREATE TABLE auth_tokens (
+CREATE TABLE IF NOT EXISTS auth_tokens (
     token_id      UUID         NOT NULL DEFAULT gen_random_uuid(),
     user_id       UUID         NOT NULL,
     token_hash    VARCHAR(512) NOT NULL,  -- SHA-256 hash of the JWT string
@@ -16,10 +16,6 @@ CREATE TABLE auth_tokens (
 );
 
 -- Login/logout checks if a token is valid: hash + not revoked
-CREATE INDEX idx_token_hash ON auth_tokens (token_hash) WHERE is_revoked = FALSE;
+CREATE INDEX IF NOT EXISTS idx_token_hash ON auth_tokens (token_hash) WHERE is_revoked = FALSE;
 -- Cleanup job: find expired tokens to purge
-CREATE INDEX idx_token_expiry ON auth_tokens (expires_at);
-
--- WHY store token_hash not the JWT itself?
--- A JWT can be 500+ bytes. Hashing it produces a fixed 64-char hex string.
--- If this table is ever read by an attacker, raw JWTs cannot be extracted.
+CREATE INDEX IF NOT EXISTS idx_token_expiry ON auth_tokens (expires_at);

@@ -6,7 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -35,7 +34,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      * A user can register the same mobile on multiple devices (e.g. upgrade phone).
      * Returns List because multiple records may exist.
      */
-    List<User> findAllByMobileNumberAndIsActive(String mobileNumber);
+    List<User> findAllByMobileNumberAndIsActive(String mobileNumber, Boolean isActive);
 
     /**
      * Existence check for mobile + device combo.
