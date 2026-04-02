@@ -199,49 +199,6 @@ public class AuthServiceImpl implements AuthService {
     }
 
     public TokenValidationResponse validateToken(String rawToken) {
-        return null;
-    }
-
-    // ── Private helpers ─────────────────────────────────────────────────
-
-    // Normalize to E.164: +91XXXXXXXXXX
-    // Algorithm: String manipulation — O(n) string length
-    private String normalizeMobile(String mobile) {
-        String digits = mobile.replaceAll("[^0-9]", "");  // Strip non-digits
-        if (digits.length() == 10) return "+91" + digits;  // Add country code
-        if (digits.length() == 12 && digits.startsWith("91")) return "+" + digits;
-        if (digits.startsWith("+")) return mobile;
-        throw new InvalidMobileNumberException("Cannot normalize mobile: " + mobile);
-    }
-
-    private String hashDeviceFingerprint(String fingerprint) {
-        return jwtTokenProvider.hashToken(fingerprint); // Reuse SHA-256 utility
-    }
-
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    private void recordLoginAttempt(String mobile, String deviceId,
-                                    boolean success, String reason) {
-        LoginAttempt attempt = new LoginAttempt();
-        attempt.setMobileNumber(mobile);
-        attempt.setDeviceId(deviceId);
-        attempt.setSuccess(success);
-        attempt.setFailureReason(reason);
-        attempt.setAttemptedAt(LocalDateTime.now());
-        loginAttemptRepository.save(attempt);
-    }
-}
-
-
-/*
- * ADD THIS METHOD to the existing AuthServiceImpl class:
- */
-class AuthServiceImpl_validateToken_addition {
-
-    /*
-     * @Override
-     * @Transactional(readOnly = true)
-     */
-    public TokenValidationResponse validateToken(String rawToken) {
 
         // Step 1: Cryptographic validation — verifies RS256 signature + expiry
         // Throws TokenExpiredException or InvalidTokenException on failure
@@ -291,7 +248,35 @@ class AuthServiceImpl_validateToken_addition {
                 .build();
     }
 
-    // These are fields already declared in AuthServiceImpl — shown here for reference:
-    private com.upi.psp.security.JwtTokenProvider jwtTokenProvider = null;
-    private com.upi.psp.repo.AuthTokenRepository authTokenRepository = null;
+
+
+    // ── Private helpers ─────────────────────────────────────────────────
+
+    // Normalize to E.164: +91XXXXXXXXXX
+    // Algorithm: String manipulation — O(n) string length
+    private String normalizeMobile(String mobile) {
+        String digits = mobile.replaceAll("[^0-9]", "");  // Strip non-digits
+        if (digits.length() == 10) return "+91" + digits;  // Add country code
+        if (digits.length() == 12 && digits.startsWith("91")) return "+" + digits;
+        if (digits.startsWith("+")) return mobile;
+        throw new InvalidMobileNumberException("Cannot normalize mobile: " + mobile);
+    }
+
+    private String hashDeviceFingerprint(String fingerprint) {
+        return jwtTokenProvider.hashToken(fingerprint); // Reuse SHA-256 utility
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    private void recordLoginAttempt(String mobile, String deviceId,
+                                    boolean success, String reason) {
+        LoginAttempt attempt = new LoginAttempt();
+        attempt.setMobileNumber(mobile);
+        attempt.setDeviceId(deviceId);
+        attempt.setSuccess(success);
+        attempt.setFailureReason(reason);
+        attempt.setAttemptedAt(LocalDateTime.now());
+        loginAttemptRepository.save(attempt);
+    }
 }
+
+
