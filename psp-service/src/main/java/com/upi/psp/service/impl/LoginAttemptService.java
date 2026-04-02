@@ -15,6 +15,7 @@ public class LoginAttemptService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordAttempt(String mobile, String deviceId,
                               boolean success, String reason) {
+
         repo.save(new LoginAttempt(mobile, deviceId, null, success, reason));
     }
 }

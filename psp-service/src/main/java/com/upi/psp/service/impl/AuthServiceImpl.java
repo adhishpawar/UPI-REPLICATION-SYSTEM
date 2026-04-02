@@ -126,12 +126,12 @@ public class AuthServiceImpl implements AuthService {
 
         // Step 3: Check account status
         if (!user.getIsActive() || user.getStatus() == UserStatus.LOCKED) {
-            loginAttemptService.recordAttempt(request.getMobileNumber(), request.getDeviceId(),
+            loginAttemptService.recordAttempt(normalizedMobile, request.getDeviceId(),
                     false, "ACCOUNT_LOCKED");
             throw new AccountLockedException("Account is locked or inactive");
         }
         if (user.getStatus() != UserStatus.ACTIVE) {
-            loginAttemptService.recordAttempt(request.getMobileNumber(), request.getDeviceId(),
+            loginAttemptService.recordAttempt(normalizedMobile, request.getDeviceId(),
                     false, "MPIN_NOT_SET");
             throw new MpinNotSetException("MPIN setup not completed");
         }
@@ -148,14 +148,14 @@ public class AuthServiceImpl implements AuthService {
                 log.warn("Account auto-locked: userId={}", user.getUserId());
             }
             userStateService.recordFailedAttempt(user);   // ← own txn, commits failedCount + LOCKED
-            loginAttemptService.recordAttempt(request.getMobileNumber(), request.getDeviceId(),
+            loginAttemptService.recordAttempt(normalizedMobile, request.getDeviceId(),
                     false, "INVALID_MPIN");             // ← own txn, commits audit
             throw new InvalidCredentialsException("Invalid credentials");
         }
 
         // Step 5: Success path — everything below is in the parent txn ─────────
         userStateService.resetFailedCount(user);          // ← own txn
-        loginAttemptService.recordAttempt(request.getMobileNumber(), request.getDeviceId(),
+        loginAttemptService.recordAttempt(normalizedMobile, request.getDeviceId(),
                 true, null);
 
         // Step 6: Generate JWT
@@ -269,8 +269,9 @@ public class AuthServiceImpl implements AuthService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     private void recordLoginAttempt(String mobile, String deviceId,
                                     boolean success, String reason) {
+
         LoginAttempt attempt = new LoginAttempt();
-        attempt.setMobileNumber(mobile);
+        attempt.setMobileNumber(normalizeMobile(mobile));
         attempt.setDeviceId(deviceId);
         attempt.setSuccess(success);
         attempt.setFailureReason(reason);
