@@ -3,9 +3,9 @@ package com.upi.psp.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ClassPathResource;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.InputStream;
 import java.security.KeyFactory;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
@@ -25,33 +25,39 @@ public class JwkConfig {
 
     @Bean
     public RSAPrivateKey rsaPrivateKey() throws Exception {
-        // Read PEM file content
-        String content = new String(Files.readAllBytes(Path.of(privateKeyPath)));
-        // Strip PEM headers and decode Base64
-        String keyData = content
-                .replace("-----BEGIN PRIVATE KEY-----", "")
-                .replace("-----END PRIVATE KEY-----", "")
-                .replaceAll("\\s", "");
-        byte[] keyBytes = Base64.getDecoder().decode(keyData);
 
-        // Java Security API: reconstruct key object from raw bytes
-        PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
-        KeyFactory kf = KeyFactory.getInstance("RSA");
-        return (RSAPrivateKey) kf.generatePrivate(spec);
+        try (InputStream is = new ClassPathResource(privateKeyPath).getInputStream()) {
+            // Read PEM file content
+            String content = new String(is.readAllBytes());
+            // Strip PEM headers and decode Base64
+            String keyData = content
+                    .replace("-----BEGIN PRIVATE KEY-----", "")
+                    .replace("-----END PRIVATE KEY-----", "")
+                    .replaceAll("\\s", "");
+            byte[] keyBytes = Base64.getDecoder().decode(keyData);
+
+            // Java Security API: reconstruct key object from raw bytes
+            PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
+            KeyFactory kf = KeyFactory.getInstance("RSA");
+            return (RSAPrivateKey) kf.generatePrivate(spec);
+
+        }
     }
 
     @Bean
     public RSAPublicKey rsaPublicKey() throws Exception {
-        String content = new String(Files.readAllBytes(Path.of(publicKeyPath)));
-        String keyData = content
-                .replace("-----BEGIN PUBLIC KEY-----", "")
-                .replace("-----END PUBLIC KEY-----", "")
-                .replaceAll("\\s", "");
-        byte[] keyBytes = Base64.getDecoder().decode(keyData);
+        try (InputStream is = new ClassPathResource(publicKeyPath).getInputStream()) {
+            String content = new String(is.readAllBytes());
+            String keyData = content
+                    .replace("-----BEGIN PUBLIC KEY-----", "")
+                    .replace("-----END PUBLIC KEY-----", "")
+                    .replaceAll("\\s", "");
+            byte[] keyBytes = Base64.getDecoder().decode(keyData);
 
-        X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
-        KeyFactory kf = KeyFactory.getInstance("RSA");
-        return (RSAPublicKey) kf.generatePublic(spec);
+            X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
+            KeyFactory kf = KeyFactory.getInstance("RSA");
+            return (RSAPublicKey) kf.generatePublic(spec);
+        }
     }
 }
 

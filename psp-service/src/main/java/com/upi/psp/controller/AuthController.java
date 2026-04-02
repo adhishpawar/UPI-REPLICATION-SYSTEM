@@ -17,6 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import javax.security.auth.login.AccountLockedException;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Map;
 
@@ -48,7 +49,7 @@ public class AuthController {
     @PostMapping("/login")
     @Operation(summary = "Login and receive JWT access token")
     public ResponseEntity<LoginResponse> login(
-            @Valid @RequestBody LoginRequest request) {
+            @Valid @RequestBody LoginRequest request) throws AccountLockedException {
         LoginResponse response = authService.login(request);
         return ResponseEntity.ok(response);
     }
