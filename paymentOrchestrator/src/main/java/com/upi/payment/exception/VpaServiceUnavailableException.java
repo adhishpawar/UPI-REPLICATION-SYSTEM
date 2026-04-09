@@ -1,14 +1,13 @@
 package com.upi.payment.exception;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// InvalidStateTransitionException
-// THROWN BY: TransactionStateMachine.transition()
-// MAPS TO:   HTTP 409 Conflict (if triggered by API) / logged as ERROR (if from Kafka)
-// NOTE: If this is ever thrown from a Kafka consumer, it indicates a bug —
-//       the Kafka message ordering is wrong. Alert immediately.
+// VpaServiceUnavailableException
+// THROWN BY: VpaServiceClient fallback (when circuit breaker is OPEN)
+// CAUGHT BY: SagaOrchestrator.validatePayee() → transitions to FAILED
+// MAPS TO:   Not directly. Transaction ends in FAILED state with clear reason.
 // ─────────────────────────────────────────────────────────────────────────────
-public class InvalidStateTransitionException extends PaymentBaseException {
-    public InvalidStateTransitionException(String message) {
-        super(message, "INVALID_STATE_TRANSITION");
+public class VpaServiceUnavailableException extends PaymentBaseException {
+    public VpaServiceUnavailableException(String message) {
+        super(message, "VPA_SERVICE_UNAVAILABLE");
     }
 }
