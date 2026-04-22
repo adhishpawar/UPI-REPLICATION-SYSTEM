@@ -2,6 +2,7 @@ package com.upi.payment.statemachine;
 
 
 import com.upi.payment.domain.enums.TransactionStatus;
+import com.upi.payment.exception.InvalidStateTransitionException;
 import org.springframework.stereotype.Component;
 
 import java.util.EnumMap;

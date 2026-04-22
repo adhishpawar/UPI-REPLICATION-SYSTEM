@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 
@@ -14,8 +15,9 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReversalSuccessEvent {
-    private UUID transactionId;
-    private String bankReferenceNumber;  // Bank's own reference
+    private UUID   transactionId;
+    private String reversalBankReference;  // Bank's reference for the reversal transaction
     private String correlationId;
+    private LocalDateTime reversedAt;
 }
 

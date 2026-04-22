@@ -15,5 +15,8 @@ public class PaymentFailedEvent {
     private UUID transactionId;
     private String rrn;
     private String failureReason;
+    private String correlationId;
 
+    public PaymentFailedEvent(UUID transactionId, String rrn, String failureReason) {
+    }
 }

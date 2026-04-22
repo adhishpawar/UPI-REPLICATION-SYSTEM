@@ -24,5 +24,6 @@ public class TransactionDetailResponse {
     private LocalDateTime initiatedAt;
     private LocalDateTime completedAt;
     private List<TransactionEventDto> events;  // Full audit trail
+    private String remarks;
 
 }

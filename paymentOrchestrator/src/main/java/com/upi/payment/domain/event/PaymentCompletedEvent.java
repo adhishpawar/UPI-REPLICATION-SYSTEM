@@ -14,11 +14,16 @@ import java.util.UUID;
 @Getter
 public class PaymentCompletedEvent {
 
-    private UUID transactionId;
-    private String rrn;
-    private String payer;
-    private String payeeVpa;
-    private BigDecimal amount;
+    private UUID        transactionId;
+    private String      rrn;
+    private String      payerVpa;
+    private String      payeeVpa;
+    private String      payeeAccountHolderName;
+    private BigDecimal  amount;
+    private String      currency;
     private LocalDateTime completedAt;
+    private String      correlationId;
 
+    public PaymentCompletedEvent(UUID transactionId, String rrn, String payerVpa, String payeeVpa, BigDecimal amount, LocalDateTime completedAt) {
+    }
 }

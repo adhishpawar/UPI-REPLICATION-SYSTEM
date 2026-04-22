@@ -2,6 +2,8 @@ package com.upi.payment.vpa;
 
 
 import com.upi.payment.domain.dto.VpaResolutionResponse;
+import com.upi.payment.exception.VpaNotFoundException;
+import com.upi.payment.exception.VpaServiceUnavailableException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;

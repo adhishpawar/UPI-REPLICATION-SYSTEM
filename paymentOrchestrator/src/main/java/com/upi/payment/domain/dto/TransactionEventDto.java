@@ -12,5 +12,6 @@ public class TransactionEventDto {
     private String toState;
     private String description;
     private LocalDateTime occurredAt;
+    private String triggeredBy;
 }
 

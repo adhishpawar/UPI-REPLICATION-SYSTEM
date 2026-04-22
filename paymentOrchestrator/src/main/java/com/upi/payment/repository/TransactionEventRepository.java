@@ -32,58 +32,57 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
-public interface TransactionEventRepository extends JpaRepository<TransactionEvent, UUID>
-    {
+public interface TransactionEventRepository extends JpaRepository<TransactionEvent, UUID> {
 
-        /**
-         * Fetch all events for a transaction, ordered chronologically.
-         * Used by GET /payments/{id} to build the full audit trail.
-         * One SQL query returns the complete state history.
-         */
-        List<TransactionEvent> findByTransactionIdOrderByOccurredAtAsc(UUID transactionId);
+    /**
+     * Fetch all events for a transaction, ordered chronologically.
+     * Used by GET /payments/{id} to build the full audit trail.
+     * One SQL query returns the complete state history.
+     */
+    List<TransactionEvent> findByTransactionIdOrderByOccurredAtAsc(UUID transactionId);
 
-        /**
-         * Count events for a transaction — sanity check during testing.
-         * Happy path should produce exactly 5 events. Reversal path: 7 events.
-         */
-        long countByTransactionId(UUID transactionId);
+    /**
+     * Count events for a transaction — sanity check during testing.
+     * Happy path should produce exactly 5 events. Reversal path: 7 events.
+     */
+    long countByTransactionId(UUID transactionId);
 
-        /**
-         * Find all events of a specific type across all transactions.
-         * Used for operations monitoring: "how many CREDIT_FAILED events in last hour?"
-         * Powers future alerting: alert if CREDIT_FAILED count > threshold.
-         */
-        @Query("""
+    /**
+     * Find all events of a specific type across all transactions.
+     * Used for operations monitoring: "how many CREDIT_FAILED events in last hour?"
+     * Powers future alerting: alert if CREDIT_FAILED count > threshold.
+     */
+    @Query("""
             SELECT e FROM TransactionEvent e
             WHERE e.toState = :state
             AND e.occurredAt >= :since
             ORDER BY e.occurredAt DESC
             """)
-        List<TransactionEvent> findByToStateAndOccurredAtAfter(
+    List<TransactionEvent> findByToStateAndOccurredAtAfter(
             @Param("state") TransactionStatus state,
             @Param("since") LocalDateTime since);
 
-        /**
-         * Get the most recent event for a transaction.
-         * Used as a quick check: "what was the last thing that happened to this payment?"
-         */
-        @Query("""
+    /**
+     * Get the most recent event for a transaction.
+     * Used as a quick check: "what was the last thing that happened to this payment?"
+     */
+    @Query("""
             SELECT e FROM TransactionEvent e
             WHERE e.transactionId = :transactionId
             ORDER BY e.occurredAt DESC
             LIMIT 1
             """)
-        java.util.Optional<TransactionEvent> findLatestEventForTransaction(
+    java.util.Optional<TransactionEvent> findLatestEventForTransaction(
             @Param("transactionId") UUID transactionId);
 
-        /**
-         * Find reversal events for reporting.
-         * Answers: "how many payments were reversed today due to credit failure?"
-         */
-        @Query("""
+    /**
+     * Find reversal events for reporting.
+     * Answers: "how many payments were reversed today due to credit failure?"
+     */
+    @Query("""
             SELECT COUNT(e) FROM TransactionEvent e
             WHERE e.toState = com.upi.payment.domain.enums.TransactionStatus.REVERSAL_INITIATED
             AND e.occurredAt >= :since
             """)
-        long countReversalsInitiatedSince(@Param("since") LocalDateTime since);
-    }
+    long countReversalsInitiatedSince(@Param("since") LocalDateTime since);
+}
