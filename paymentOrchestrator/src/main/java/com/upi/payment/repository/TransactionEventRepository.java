@@ -35,6 +35,32 @@ import java.util.UUID;
 public interface TransactionEventRepository extends JpaRepository<TransactionEvent, UUID> {
 
     /**
+     * The most recent state in which a funds movement was requested.
+     *
+     * <p>Recovery needs to know which leg it is unsure about, and the current
+     * state cannot say: {@code UNCERTAIN} deliberately erases the distinction.
+     * The append-only audit trail still has it -- the last request issued is
+     * the one still owed an answer.
+     *
+     * <p>Guessing this wrong is not harmless. Asking the money-holder about
+     * the credit when the reversal is the leg in doubt returns a true answer
+     * to the wrong question, and the decision that follows is confidently
+     * incorrect.
+     */
+    @org.springframework.data.jpa.repository.Query("""
+           SELECT e.toState FROM TransactionEvent e
+            WHERE e.transactionId = :txnId
+              AND e.toState IN (
+                    com.upi.payment.domain.enums.TransactionStatus.DEBIT_REQUESTED,
+                    com.upi.payment.domain.enums.TransactionStatus.CREDIT_REQUESTED,
+                    com.upi.payment.domain.enums.TransactionStatus.REVERSAL_INITIATED)
+            ORDER BY e.occurredAt DESC
+           """)
+    List<com.upi.payment.domain.enums.TransactionStatus> findRequestedLegs(
+            @org.springframework.data.repository.query.Param("txnId") UUID txnId,
+            org.springframework.data.domain.Pageable pageable);
+
+    /**
      * Fetch all events for a transaction, ordered chronologically.
      * Used by GET /payments/{id} to build the full audit trail.
      * One SQL query returns the complete state history.

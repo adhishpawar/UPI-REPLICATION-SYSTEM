@@ -293,10 +293,18 @@ public class SagaOrchestrator {
      */
     @Transactional
     public void markUncertain(Transaction txn, String reason) {
-        if (txn.getCurrentState() == UNCERTAIN || txn.getCurrentState() == RECONCILING) {
+        if (txn.getCurrentState().isUncertain()) {
             return;   // already parked
         }
-        applyTransition(txn, UNCERTAIN, reason);
+        // The uncertain state names the leg in doubt, so recovery knows which
+        // question to ask without having to infer it.
+        TransactionStatus uncertain = txn.getCurrentState().uncertainCounterpart();
+        if (uncertain == null) {
+            log.warn("Cannot mark {} uncertain from state {}",
+                    txn.getTransactionId(), txn.getCurrentState());
+            return;
+        }
+        applyTransition(txn, uncertain, reason);
         txn.setUncertainSince(LocalDateTime.now());
         txn.setFailureReason(reason);
         // Deadline cleared: the detector picks these up by state, and leaving
@@ -321,10 +329,14 @@ public class SagaOrchestrator {
     // through applyTransition, and therefore through the same state machine
     // guard as the ordinary saga path. One writer, one guard, one audit trail.
 
-    /** Move into RECONCILING: we are now actively establishing the truth. */
+    /** Move into the matching RECONCILING state: actively establishing the truth. */
     @Transactional
     public void beginReconciling(Transaction txn, String note) {
-        applyTransition(txn, RECONCILING, note);
+        TransactionStatus reconciling = txn.getCurrentState().reconcilingCounterpart();
+        if (reconciling == null) {
+            return;   // not in an uncertain state; nothing to reconcile
+        }
+        applyTransition(txn, reconciling, note);
         transactionRepository.save(txn);
     }
 
@@ -385,7 +397,6 @@ public class SagaOrchestrator {
      */
     @Transactional
     public void resolveAsReversed(Transaction txn, String bankReference, String note) {
-        applyTransition(txn, REVERSAL_INITIATED, "Reconciliation found the reversal posting");
         applyTransition(txn, REVERSED, note);
         txn.setCompletedAt(LocalDateTime.now());
         txn.setStateDeadlineAt(null);
@@ -402,7 +413,16 @@ public class SagaOrchestrator {
      */
     @Transactional
     public void returnToUncertain(Transaction txn, String note) {
-        applyTransition(txn, UNCERTAIN, note);
+        TransactionStatus back = switch (txn.getCurrentState()) {
+            case RECONCILING_DEBIT    -> UNCERTAIN_DEBIT;
+            case RECONCILING_CREDIT   -> UNCERTAIN_CREDIT;
+            case RECONCILING_REVERSAL -> UNCERTAIN_REVERSAL;
+            default -> null;
+        };
+        if (back == null) {
+            return;
+        }
+        applyTransition(txn, back, note);
         transactionRepository.save(txn);
     }
 

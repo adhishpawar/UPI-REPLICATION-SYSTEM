@@ -44,31 +44,60 @@ public class TransactionStateMachine {
         ALLOWED.put(PAYEE_VALIDATED,    EnumSet.of(DEBIT_REQUESTED, FAILED));
 
         // ── Debit leg. Three outcomes, not two: yes, no, and unknown. ─────
-        ALLOWED.put(DEBIT_REQUESTED,    EnumSet.of(DEBITED, DEBIT_FAILED, UNCERTAIN));
+        ALLOWED.put(DEBIT_REQUESTED,    EnumSet.of(DEBITED, DEBIT_FAILED, UNCERTAIN_DEBIT));
 
         // ── Credit leg. Same three outcomes. ──────────────────────────────
-        ALLOWED.put(DEBITED,            EnumSet.of(CREDIT_REQUESTED, UNCERTAIN));
-        ALLOWED.put(CREDIT_REQUESTED,   EnumSet.of(CREDITED, CREDIT_FAILED, UNCERTAIN));
+        // Note DEBITED goes only to CREDIT_REQUESTED. There is nothing to be
+        // uncertain about at that instant: the debit is confirmed and the
+        // credit has not been asked for yet.
+        ALLOWED.put(DEBITED,            EnumSet.of(CREDIT_REQUESTED));
+        ALLOWED.put(CREDIT_REQUESTED,   EnumSet.of(CREDITED, CREDIT_FAILED, UNCERTAIN_CREDIT));
         ALLOWED.put(CREDITED,           EnumSet.of(COMPLETED));
 
         // ── Compensation. A known credit failure after a committed debit. ─
         ALLOWED.put(CREDIT_FAILED,      EnumSet.of(REVERSAL_INITIATED));
-        ALLOWED.put(REVERSAL_INITIATED, EnumSet.of(REVERSED, REVERSAL_FAILED, UNCERTAIN));
+        ALLOWED.put(REVERSAL_INITIATED, EnumSet.of(REVERSED, REVERSAL_FAILED, UNCERTAIN_REVERSAL));
         // Compensation failing is not "failed" -- money is still missing.
         ALLOWED.put(REVERSAL_FAILED,    EnumSet.of(MANUAL_REVIEW, REVERSAL_INITIATED));
 
-        // ── Uncertainty. The only way OUT of UNCERTAIN is through
-        //    reconciliation. There is deliberately no UNCERTAIN -> COMPLETED
-        //    and no UNCERTAIN -> REVERSED edge: nothing may decide the
-        //    outcome of a payment without first establishing the facts.
-        ALLOWED.put(UNCERTAIN,          EnumSet.of(RECONCILING));
-        ALLOWED.put(RECONCILING,        EnumSet.of(
-                COMPLETED,           // the money-holder confirms the credit landed
-                REVERSAL_INITIATED,  // it confirms the credit never landed
-                DEBIT_FAILED,        // it confirms the debit never landed
-                DEBITED,             // debit landed; carry on with the credit leg
-                UNCERTAIN,           // could not reach it; try again later
-                MANUAL_REVIEW));     // out of attempts, or contradictory answers
+        // ── Uncertainty, per leg ──────────────────────────────────────────
+        //
+        // The only way out of an uncertain state is through its matching
+        // reconciling state. There is deliberately no edge from uncertainty
+        // straight to a conclusion: nothing may decide the outcome of a
+        // payment without first establishing the facts.
+        //
+        // Keeping the legs separate is what makes the money-invariants
+        // provable. With one shared UNCERTAIN state, DEBITED could reach
+        // DEBIT_FAILED by way of reconciliation -- a payment whose money had
+        // demonstrably left the payer, recorded as though the debit never
+        // happened.
+        ALLOWED.put(UNCERTAIN_DEBIT,      EnumSet.of(RECONCILING_DEBIT));
+        ALLOWED.put(UNCERTAIN_CREDIT,     EnumSet.of(RECONCILING_CREDIT));
+        ALLOWED.put(UNCERTAIN_REVERSAL,   EnumSet.of(RECONCILING_REVERSAL));
+
+        // Debit in doubt: it either happened (resume) or it did not (fail
+        // safely -- no money moved, so nothing to compensate).
+        ALLOWED.put(RECONCILING_DEBIT,    EnumSet.of(
+                DEBITED,            // the bank has the posting; carry on
+                DEBIT_FAILED,       // it has none; no money moved
+                UNCERTAIN_DEBIT,    // unreachable; ask again later
+                MANUAL_REVIEW));    // out of attempts
+
+        // Credit in doubt: the payer has already been debited, so every exit
+        // must account for that money.
+        ALLOWED.put(RECONCILING_CREDIT,   EnumSet.of(
+                COMPLETED,          // the credit landed; the payee was paid
+                REVERSAL_INITIATED, // it did not; compensate the payer
+                UNCERTAIN_CREDIT,
+                MANUAL_REVIEW));
+
+        // Reversal in doubt: the payer is owed money until proven otherwise.
+        ALLOWED.put(RECONCILING_REVERSAL, EnumSet.of(
+                REVERSED,           // the reversal landed; the payer is whole
+                REVERSAL_INITIATED, // it did not; re-issue (idempotent)
+                UNCERTAIN_REVERSAL,
+                MANUAL_REVIEW));
 
         // ── Terminal ──────────────────────────────────────────────────────
         ALLOWED.put(COMPLETED,     EnumSet.noneOf(TransactionStatus.class));

@@ -60,8 +60,31 @@ public enum TransactionStatus {
     REVERSAL_FAILED,        // compensation itself failed -> a human must look
 
     // ── Uncertainty and self-healing ──────────────────────────────────────
-    UNCERTAIN,              // outcome unknown. DO NOT retry. DO NOT reverse.
-    RECONCILING,            // asking the money-holder what actually happened
+    //
+    // Split by leg, deliberately. A single UNCERTAIN state cannot say WHICH
+    // movement is in doubt, and that omission has two costs:
+    //
+    //   1. Recovery has to guess which question to ask the money-holder. An
+    //      earlier version inferred it from field presence and got reversals
+    //      wrong -- reconciling a timed-out reversal against the credit leg,
+    //      producing a true answer to the wrong question.
+    //
+    //   2. The state graph cannot express that a confirmed debit can never
+    //      end as DEBIT_FAILED. With one UNCERTAIN state, DEBITED could reach
+    //      DEBIT_FAILED via reconciliation -- money gone, payment recorded as
+    //      "the debit never happened". A test asserting that money-invariant
+    //      is what surfaced this.
+    //
+    // Naming the leg in the state fixes both: the question to ask is implied,
+    // and the graph can be proved correct.
+    UNCERTAIN_DEBIT,        // debit outcome unknown. DO NOT retry, DO NOT reverse.
+    UNCERTAIN_CREDIT,       // credit outcome unknown
+    UNCERTAIN_REVERSAL,     // reversal outcome unknown
+
+    RECONCILING_DEBIT,      // asking the money-holder about the debit
+    RECONCILING_CREDIT,     // ...about the credit
+    RECONCILING_REVERSAL,   // ...about the reversal
+
     MANUAL_REVIEW;          // terminal, unresolvable automatically
 
     /**
@@ -73,13 +96,42 @@ public enum TransactionStatus {
         return switch (this) {
             case DEBITED, CREDIT_REQUESTED, CREDITED, CREDIT_FAILED,
                  COMPLETED, REVERSAL_INITIATED, REVERSED, REVERSAL_FAILED,
-                 UNCERTAIN, RECONCILING, MANUAL_REVIEW -> true;
+                 UNCERTAIN_CREDIT, UNCERTAIN_REVERSAL,
+                 RECONCILING_CREDIT, RECONCILING_REVERSAL,
+                 MANUAL_REVIEW -> true;
             default -> false;
         };
     }
 
     /** True when the outcome of a funds movement is genuinely unknown. */
     public boolean isUncertain() {
-        return this == UNCERTAIN || this == RECONCILING;
+        return switch (this) {
+            case UNCERTAIN_DEBIT, UNCERTAIN_CREDIT, UNCERTAIN_REVERSAL,
+                 RECONCILING_DEBIT, RECONCILING_CREDIT, RECONCILING_REVERSAL -> true;
+            default -> false;
+        };
+    }
+
+    /**
+     * The uncertain state for a movement that was requested in this state.
+     * Null if this state is not awaiting a money-holder's reply.
+     */
+    public TransactionStatus uncertainCounterpart() {
+        return switch (this) {
+            case DEBIT_REQUESTED    -> UNCERTAIN_DEBIT;
+            case CREDIT_REQUESTED   -> UNCERTAIN_CREDIT;
+            case REVERSAL_INITIATED -> UNCERTAIN_REVERSAL;
+            default -> null;
+        };
+    }
+
+    /** The reconciling state that follows this uncertain state. */
+    public TransactionStatus reconcilingCounterpart() {
+        return switch (this) {
+            case UNCERTAIN_DEBIT    -> RECONCILING_DEBIT;
+            case UNCERTAIN_CREDIT   -> RECONCILING_CREDIT;
+            case UNCERTAIN_REVERSAL -> RECONCILING_REVERSAL;
+            default -> null;
+        };
     }
 }

@@ -128,11 +128,33 @@ public class PostingService {
                     .status(Ledger.TransactionStatus.PENDING)
                     .reference(reference(txId, leg))
                     .build()));
-        } catch (DataIntegrityViolationException dup) {
-            // A concurrent caller claimed this (txId, leg) first. The UNIQUE
-            // constraint is the guard; the read above was only a fast path.
-            log.warn("Concurrent duplicate posting for txId={} leg={}", txId, leg);
-            throw new DuplicatePostingException(txId, leg.name());
+        } catch (DataIntegrityViolationException violation) {
+            // Do NOT assume this means "duplicate". Any constraint can raise
+            // this exception, and treating them all as duplicates is how a
+            // schema defect becomes an uncertain payment.
+            //
+            // That happened here: a stale CHECK constraint rejected every
+            // REVERSAL posting, this branch reported it as a duplicate, the
+            // caller received 409, mapped it to "outcome unknown", and a
+            // payer's compensation sat unresolved. The database was refusing
+            // outright and the system read it as ambiguity.
+            //
+            // Re-reading settles it: if the row is there, someone else won the
+            // race and this genuinely is a duplicate. If it is not, the write
+            // was rejected for some other reason and must be surfaced as an
+            // error, loudly.
+            boolean nowExists = Boolean.TRUE.equals(
+                    tx.execute(s -> ledgerRepository.findByTxIdAndType(txId, leg).isPresent()));
+
+            if (nowExists) {
+                log.warn("Concurrent duplicate posting for txId={} leg={}", txId, leg);
+                throw new DuplicatePostingException(txId, leg.name());
+            }
+
+            log.error("Posting REJECTED by the database for txId={} leg={} -- "
+                    + "not a duplicate, the row does not exist: {}",
+                    txId, leg, violation.getMostSpecificCause().getMessage());
+            throw violation;
         }
 
         // ── Phase 2: do the work ─────────────────────────────────────────

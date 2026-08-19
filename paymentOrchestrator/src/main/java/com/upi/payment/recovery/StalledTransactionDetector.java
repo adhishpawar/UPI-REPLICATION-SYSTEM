@@ -3,10 +3,12 @@ package com.upi.payment.recovery;
 import com.upi.payment.domain.entity.Transaction;
 import com.upi.payment.domain.enums.TransactionStatus;
 import com.upi.payment.observability.ExecutionRecorder;
+import com.upi.payment.repository.TransactionEventRepository;
 import com.upi.payment.repository.TransactionRepository;
 import com.upi.payment.saga.SagaOrchestrator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +59,7 @@ public class StalledTransactionDetector {
             TransactionStatus.REVERSAL_INITIATED);
 
     private final TransactionRepository transactionRepository;
+    private final TransactionEventRepository eventRepository;
     private final RecoveryCaseRepository caseRepository;
     private final SagaOrchestrator saga;
     private final ExecutionRecorder recorder;
@@ -105,8 +108,12 @@ public class StalledTransactionDetector {
      * from the state, never from the event that caused it.
      */
     private void openCasesForUncertain() {
-        List<Transaction> uncertain = transactionRepository
-                .findAllByCurrentState(TransactionStatus.UNCERTAIN);
+        List<Transaction> uncertain = new java.util.ArrayList<>();
+        for (TransactionStatus st : List.of(TransactionStatus.UNCERTAIN_DEBIT,
+                                            TransactionStatus.UNCERTAIN_CREDIT,
+                                            TransactionStatus.UNCERTAIN_REVERSAL)) {
+            uncertain.addAll(transactionRepository.findAllByCurrentState(st));
+        }
 
         for (Transaction txn : uncertain) {
             if (caseRepository.existsByTransactionIdAndClosedAtIsNull(txn.getTransactionId())) {
@@ -119,13 +126,30 @@ public class StalledTransactionDetector {
             // produce a confidently wrong answer.
             TransactionStatus legInDoubt = inferLegInDoubt(txn);
 
-            RecoveryCase c = caseRepository.save(RecoveryCase.builder()
-                    .transactionId(txn.getTransactionId())
-                    .detectedState(legInDoubt)
-                    .classification("UNKNOWN_OUTCOME")
-                    .strategy("RECONCILE")
-                    .outcome("IN_PROGRESS")
-                    .build());
+            // One case per transaction, enforced by a UNIQUE constraint. A
+            // payment can become uncertain more than once -- a reversal can
+            // time out after a credit already did -- so a previously closed
+            // case is REOPENED rather than duplicated. Attempts accumulate
+            // across reopenings, which is what lets a payment that keeps
+            // failing eventually reach MANUAL_REVIEW instead of looping.
+            RecoveryCase c = caseRepository.findByTransactionId(txn.getTransactionId())
+                    .map(existing -> {
+                        existing.setClosedAt(null);
+                        existing.setClaimedBy(null);
+                        existing.setClaimedUntil(null);
+                        existing.setDetectedState(legInDoubt);
+                        existing.setOutcome("IN_PROGRESS");
+                        existing.setUpdatedAt(java.time.LocalDateTime.now());
+                        return existing;
+                    })
+                    .orElseGet(() -> RecoveryCase.builder()
+                            .transactionId(txn.getTransactionId())
+                            .detectedState(legInDoubt)
+                            .classification("UNKNOWN_OUTCOME")
+                            .strategy("RECONCILE")
+                            .outcome("IN_PROGRESS")
+                            .build());
+            c = caseRepository.save(c);
 
             log.info("Opened recovery case {} for transaction {} (leg in doubt: {})",
                     c.getCaseId(), txn.getTransactionId(), legInDoubt);
@@ -146,15 +170,17 @@ public class StalledTransactionDetector {
      * because {@code UNCERTAIN} deliberately erases the distinction. The last
      * request the payment issued is the one still owed an answer.
      */
+    /**
+     * Which movement is in doubt.
+     *
+     * <p>Now simply the state, because the uncertain states name their leg.
+     * Two earlier versions inferred it -- first from which fields happened to
+     * be populated, then from the audit trail -- and the first got reversals
+     * wrong, reconciling a timed-out reversal against the credit leg. Encoding
+     * the leg in the state removed the inference entirely, which is the better
+     * kind of fix: the bug is not handled, it is unrepresentable.
+     */
     private TransactionStatus inferLegInDoubt(Transaction txn) {
-        if (txn.getBankDebitReferenceNumber() == null) {
-            return TransactionStatus.DEBIT_REQUESTED;
-        }
-        if (txn.getCurrentState() == TransactionStatus.UNCERTAIN
-                && txn.getFailureReason() != null
-                && txn.getFailureReason().toLowerCase().contains("reversal")) {
-            return TransactionStatus.REVERSAL_INITIATED;
-        }
-        return TransactionStatus.CREDIT_REQUESTED;
+        return txn.getCurrentState();
     }
 }

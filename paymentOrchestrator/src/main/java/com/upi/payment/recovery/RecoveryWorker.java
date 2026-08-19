@@ -157,12 +157,14 @@ public class RecoveryWorker {
             return;
         }
 
-        if (txn.getCurrentState() == TransactionStatus.UNCERTAIN) {
-            saga.beginReconciling(txn, "Asking the money-holder what it actually recorded");
-        }
+        // The leg is read off the state itself. UNCERTAIN_CREDIT can only mean
+        // the credit is in doubt, so there is nothing to infer and nothing to
+        // get wrong.
+        FundsMovement.Leg leg = legFor(txn.getCurrentState());
+
+        saga.beginReconciling(txn, "Asking the money-holder what it actually recorded");
 
         c.setAttempts(c.getAttempts() + 1);
-        FundsMovement.Leg leg = legFor(c.getDetectedState());
         String accountNumber = accountFor(txn, leg);
 
         recorder.record(txn.getTraceId(), txn.getTransactionId(), COMPONENT,
@@ -228,6 +230,23 @@ public class RecoveryWorker {
         }
 
         boolean posted = record.found() && "SUCCESS".equalsIgnoreCase(record.status());
+
+        // A payment that keeps coming back must eventually stop. Without a cap
+        // a repeatedly-failing reversal cycles forever: re-issue, fail, become
+        // uncertain, reopen, re-issue -- busy, and no closer to the payer
+        // getting their money back. Escalating is not giving up; it is
+        // admitting that the automated path has been exhausted, which someone
+        // needs to know.
+        if (c.getAttempts() > maxAttempts && !posted) {
+            String note = "Exhausted " + maxAttempts + " reconciliation attempts on the "
+                    + leg + " leg without resolution. A human must complete this.";
+            saga.resolveAsManualReview(txn, note);
+            closeCase(c, "MANUAL_REVIEW", note);
+            recorder.record(txn.getTraceId(), txn.getTransactionId(), COMPONENT,
+                    "escalate to MANUAL_REVIEW", ExecutionRecorder.Kind.RECOVERY,
+                    ExecutionRecorder.Status.FAILED, null, note, null);
+            return;
+        }
 
         String narrative;
         String outcome;
@@ -345,10 +364,20 @@ public class RecoveryWorker {
         caseRepository.save(c);
     }
 
-    private FundsMovement.Leg legFor(TransactionStatus detectedState) {
-        return switch (detectedState) {
-            case DEBIT_REQUESTED -> FundsMovement.Leg.DEBIT;
-            case REVERSAL_INITIATED -> FundsMovement.Leg.REVERSAL;
+    /**
+     * Which movement is in doubt, taken directly from the state.
+     *
+     * <p>No inference. An earlier version derived this from which fields
+     * happened to be populated and got reversals wrong: it reconciled a
+     * timed-out reversal against the credit leg, which returns a true answer
+     * to the wrong question and then acts on it.
+     */
+    private FundsMovement.Leg legFor(TransactionStatus state) {
+        return switch (state) {
+            case UNCERTAIN_DEBIT, RECONCILING_DEBIT, DEBIT_REQUESTED
+                    -> FundsMovement.Leg.DEBIT;
+            case UNCERTAIN_REVERSAL, RECONCILING_REVERSAL, REVERSAL_INITIATED
+                    -> FundsMovement.Leg.REVERSAL;
             default -> FundsMovement.Leg.CREDIT;
         };
     }
