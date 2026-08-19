@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.3.2</version>
+		<relativePath/> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.upi</groupId>
+	<artifactId>paymentOrchestrator</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name/>
+	<description/>
+	<url/>
+	<licenses>
+		<license/>
+	</licenses>
+	<developers>
+		<developer/>
+	</developers>
+	<scm>
+		<connection/>
+		<developerConnection/>
+		<tag/>
+		<url/>
+	</scm>
+	<properties>
+		<java.version>17</java.version>
+		<resilience4j.version>2.1.0</resilience4j.version>
+		<testcontainers.version>1.19.3</testcontainers.version>
+	</properties>
+	<dependencies>
+
+		<!-- ── Spring Web — REST APIs ──────────────────────────────────────── -->
+		<!-- Provides @RestController, @RequestMapping, DispatcherServlet,      -->
+		<!-- embedded Tomcat. Entry point for all HTTP traffic.                 -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+
+		<!-- ── Spring Data JPA — ORM + Repositories ───────────────────────── -->
+		<!-- Provides @Entity, JpaRepository, @Transactional, Hibernate ORM.   -->
+		<!-- Handles all database operations for transactions + events tables.  -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+
+		<!-- ── Bean Validation — @Valid, @NotNull, @DecimalMax etc. ────────── -->
+		<!-- Validates PaymentInitiationRequest fields before hitting service.  -->
+		<!-- Especially important: @DecimalMax(200000) enforces NPCI ₹2L limit. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+
+		<!-- ── Spring WebFlux — WebClient for HTTP calls ───────────────────── -->
+		<!-- WebClient is the non-blocking HTTP client used in VpaServiceClient. -->
+		<!-- We use it in synchronous (block()) mode here, but it also          -->
+		<!-- supports timeout configuration which RestTemplate does not.        -->
+		<!-- NOTE: We do NOT use the full reactive stack — just WebClient.      -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webflux</artifactId>
+		</dependency>
+
+		<!-- ── Spring Kafka — Kafka producer + consumer ────────────────────── -->
+		<!-- Provides KafkaTemplate (producer), @KafkaListener (consumer),     -->
+		<!-- KafkaAdmin (topic creation), and error handling / retry support.  -->
+		<dependency>
+			<groupId>org.springframework.kafka</groupId>
+			<artifactId>spring-kafka</artifactId>
+		</dependency>
+
+		<!-- ── Resilience4j — Circuit Breaker + Retry ──────────────────────── -->
+		<!-- @CircuitBreaker on VpaServiceClient: trips after 5 failures.       -->
+		<!-- @Retry on VPA calls: exponential backoff 1s → 2s → 4s.            -->
+		<!-- spring-boot starter auto-configures actuator health indicators.    -->
+		<dependency>
+			<groupId>io.github.resilience4j</groupId>
+			<artifactId>resilience4j-spring-boot3</artifactId>
+			<version>${resilience4j.version}</version>
+		</dependency>
+		<!-- AOP support required for @CircuitBreaker and @Retry annotations   -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-aop</artifactId>
+		</dependency>
+
+		<!-- ── Actuator — /health, /metrics, /circuitbreakers endpoints ────── -->
+		<!-- Exposes circuit breaker state at /actuator/circuitbreakers.        -->
+		<!-- Kafka consumer lag visible at /actuator/metrics/kafka.consumer.*  -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+
+		<!-- ── Micrometer + Zipkin — Distributed Tracing ───────────────────── -->
+		<!-- Every payment request gets a traceId that spans all 7 services.   -->
+		<!-- View full traces at http://localhost:9411 (Zipkin UI).             -->
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-tracing-bridge-brave</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.zipkin.reporter2</groupId>
+			<artifactId>zipkin-reporter-brave</artifactId>
+		</dependency>
+
+		<!-- ── PostgreSQL JDBC Driver ──────────────────────────────────────── -->
+		<!-- Runtime only — no compile-time dependency needed.                  -->
+		<!-- HikariCP (bundled with Spring Boot) manages the connection pool.  -->
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
+		<!-- ── Flyway — Database Schema Versioning ──────────────────────────── -->
+		<!-- V1__create_transactions.sql and V2__create_transaction_events.sql  -->
+		<!-- run automatically on startup against payment_db.                  -->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+		<!-- PostgreSQL-specific Flyway support (required for Flyway 10+)      -->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
+
+		<!-- ── Lombok — Boilerplate Reduction ──────────────────────────────── -->
+		<!-- @Getter, @Setter, @Builder, @RequiredArgsConstructor,             -->
+		<!-- @Slf4j, @NoArgsConstructor, @AllArgsConstructor.                  -->
+		<!-- optional=true: excluded from final JAR (compile-time only tool).  -->
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<optional>true</optional>
+		</dependency>
+
+		<!-- ── Jackson — JSON Serialization ────────────────────────────────── -->
+		<!-- Bundled with spring-boot-starter-web, but listed explicitly for   -->
+		<!-- Kafka JSON serializer/deserializer and BigDecimal precision config. -->
+		<!-- jackson-datatype-jsr310: serialize LocalDateTime to ISO-8601.     -->
+		<dependency>
+			<groupId>com.fasterxml.jackson.datatype</groupId>
+			<artifactId>jackson-datatype-jsr310</artifactId>
+		</dependency>
+
+		<!-- ── SpringDoc OpenAPI — Swagger UI ──────────────────────────────── -->
+		<!-- Auto-generates interactive API docs at /swagger-ui.html           -->
+		<!-- Reads @Operation, @Tag, @Parameter annotations from controllers.  -->
+		<dependency>
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+			<version>2.3.0</version>
+		</dependency>
+
+		<!-- ── Spring Security — JWT Header Extraction ─────────────────────── -->
+		<!-- Payment Orchestrator does NOT issue JWTs (that is PSP Service).   -->
+		<!-- It only reads the X-User-Id header set by API Gateway.            -->
+		<!-- Spring Security used minimally: just to secure endpoints.         -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+
+		<!-- ═══════════════════════════════════════════════════════════════ -->
+		<!-- TEST DEPENDENCIES                                               -->
+		<!-- ═══════════════════════════════════════════════════════════════ -->
+
+		<!-- ── Spring Boot Test — JUnit 5 + MockMvc + Mockito ──────────── -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- ── Spring Kafka Test — EmbeddedKafkaBroker ─────────────────── -->
+		<!-- Spins up an in-memory Kafka broker for tests.                   -->
+		<!-- Use @EmbeddedKafka in integration tests instead of real Kafka.  -->
+		<dependency>
+			<groupId>org.springframework.kafka</groupId>
+			<artifactId>spring-kafka-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- ── Spring Security Test ─────────────────────────────────────── -->
+		<!-- @WithMockUser for controller tests that need authenticated user. -->
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- ── Testcontainers — Real PostgreSQL in Tests ────────────────── -->
+		<!-- Spins up postgres:16-alpine Docker container for JPA tests.     -->
+		<!-- Requires Docker Desktop running. First run pulls the image.     -->
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>postgresql</artifactId>
+			<version>${testcontainers.version}</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<version>${testcontainers.version}</version>
+			<scope>test</scope>
+		</dependency>
+		<!-- Testcontainers Kafka module for integration tests -->
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>kafka</artifactId>
+			<version>${testcontainers.version}</version>
+			<scope>test</scope>
+		</dependency>
+
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>
