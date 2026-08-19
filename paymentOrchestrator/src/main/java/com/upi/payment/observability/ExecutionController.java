@@ -113,7 +113,13 @@ public class ExecutionController {
     public Map<String, Object> recovery() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("openCases", recoveryCases.countByClosedAtIsNull());
-        out.put("mismatches", reconciliations.countByMatchedFalse());
+        // Named "checks", not "mismatches". Every reconciliation starts from a
+        // belief of UNKNOWN, so `matched` is false on all of them by
+        // construction -- reporting that count as "mismatches" would show a
+        // steadily climbing number that means nothing is wrong. A metric that
+        // is technically derived from real data and still misleads is worse
+        // than no metric.
+        out.put("reconciliationChecks", reconciliations.count());
         out.put("recent", recoveryCases.findTop20ByOrderByDetectedAtDesc()
                 .stream().map(ExecutionController::toMap).toList());
         return out;
