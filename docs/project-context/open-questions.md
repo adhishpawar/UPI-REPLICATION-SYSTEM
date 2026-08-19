@@ -2,15 +2,25 @@
 
 > Decisions that need **your** input because different answers lead to
 > materially different architecture. Nothing here has been assumed.
-> Where I have a recommendation, it is stated — but I will not act on the
-> blocking ones without your answer.
+>
+> **Status as of 2026-08-20:** you chose the recommended option for every
+> question. Q-1 through Q-5 and Q-8 are implemented and verified. Q-6 and Q-7
+> concern work that has not started, so the recommendation is recorded as the
+> decision and will be applied when that work begins — with one caveat on Q-7
+> noted below, because its premise changed during the sprint.
 
-Status: `BLOCKING` (stops a milestone) · `SOON` (needed within Phase 1) ·
-`LATER`.
+Status: `RESOLVED` · `RECORDED` (decided, applies to future work) ·
+`BLOCKING` · `SOON` · `LATER`.
 
 ---
 
-## Q-1 · BLOCKING — Which funding model is the payment core built around first?
+## Q-1 · RESOLVED — bank first, with the port in place
+
+**Chosen: (a).** `FundsMover` exists with a `BankFundsMover` implementation and
+a `FundingSource` enum carrying `WALLET`. Adding the wallet is now one bean and
+no change to the saga, state machine, handlers or recovery.
+
+### Original question
 
 The platform has two possible money-holders and the choice changes what gets
 built in the next few hours.
@@ -31,7 +41,14 @@ means (b) is later an additive change, not a refactor.
 
 ---
 
-## Q-2 · BLOCKING — Should I start Docker Desktop, or design for Postgres-only?
+## Q-2 · RESOLVED — Postgres-only, Kafka as a swap-in
+
+**Chosen: (a).** The transactional outbox runs on PostgreSQL alone.
+`KafkaSink` exists and is selected by one config line
+(`outbox.relay.sink: kafka`) whenever a broker is available. Docker Desktop was
+not started.
+
+### Original question
 
 Kafka is not running and the Docker daemon is down. My plan (D-006) makes the
 platform run on **PostgreSQL alone**, with Kafka as a swap-in.
@@ -49,7 +66,17 @@ Docker Desktop without you saying so.
 
 ---
 
-## Q-3 · SOON — Is `MANUAL_REVIEW` acceptable as a terminal state?
+## Q-3 · RESOLVED — `MANUAL_REVIEW` kept
+
+**Chosen: keep it.** Implemented and reachable: recovery escalates there when
+the money-holder cannot be reached within the attempt budget, and the state
+machine treats it as terminal. The showcase reports it as a correct outcome
+rather than an error.
+
+"How often do we land there" is the quality metric; *that we can* is the safety
+property. A system that always resolves automatically is guessing.
+
+### Original question
 
 The self-healing design targets "95% automatic recovery, zero manual
 complaints". Real payment systems keep a manual queue, because some
@@ -64,7 +91,14 @@ sometimes end in `MANUAL_REVIEW`.**
 
 ---
 
-## Q-4 · SOON — RRN format: 12 chars per the doc, or 30 per the code?
+## Q-4 · RESOLVED — 12 digits, random suffix
+
+**Chosen: as recommended.** `RrnGenerator` now emits `yyMMdd` + 6 random digits
+= 12 digits, matching both the design document and the real NPCI length. The
+`SecureRandom` instinct is preserved; the divergence from NPCI's exact scheme is
+documented in the class.
+
+### Original question
 
 Master plan §6.3 says `rrn VARCHAR(12)`, format `YYYYMMDD` + 4-digit
 sequence — which is close to the real NPCI RRN. The code uses `VARCHAR(30)`
@@ -77,7 +111,22 @@ honest, and unblocks the migration.
 
 ---
 
-## Q-5 · SOON — Is `X-User-Id` from a not-yet-existing gateway acceptable for Phase 1?
+## Q-5 · RESOLVED — identity now comes from a verified token
+
+**Chosen: (a).** The orchestrator validates psp-service's RS256 tokens against
+its JWK Set. `X-User-Id` is gone.
+
+Verified: a payment with no token is rejected 401, a forged token 401, spending
+from a VPA you do not own 403, and another user's transaction returns 404.
+
+Two limits stated rather than papered over: the observability endpoints remain
+open (an operator surface, and a browser's `EventSource` cannot send an
+`Authorization` header, so securing the stream would mean a token in a query
+string); and tokens are not checked against psp's revocation table, so a
+logged-out token stays valid until it expires. Short expiry is the mitigation;
+introspection is the fix if revocation ever needs to be immediate.
+
+### Original question
 
 `paymentOrchestrator` trusts an `X-User-Id` header "set by the API Gateway".
 There is no gateway, and `SecurityConfig` is empty — so today any caller can
@@ -93,7 +142,17 @@ it is a small change and makes the auth story real rather than notional.
 
 ---
 
-## Q-6 · LATER — Should the wallet hold real KYC fields?
+## Q-6 · RECORDED — wallet KYC: status enum only, no documents
+
+**Decision (as recommended).** When the wallet is built, `kyc_status` is an enum
+that gates transaction limits. **No KYC documents and no PII beyond what already
+exists.** Storing realistic-looking KYC data in a learning project invites
+treating it as real, and the enum captures everything the limit logic needs.
+
+No code yet — there is no wallet. Recorded so the decision is made before the
+schema is, rather than after.
+
+### Original question
 
 The wallet doc includes `kyc_status`. Storing KYC data — even fake — in a
 learning project invites treating it as real. Recommendation: model
@@ -102,7 +161,32 @@ documents or PII beyond what already exists. Confirm when the wallet is built.
 
 ---
 
-## Q-7 · LATER — Do the two git repositories merge?
+## Q-7 · RECORDED, with a changed premise — read before acting
+
+**The recommendation was (b) subtree merge "when recovery implementation
+starts". Recovery is now implemented — inside `paymentOrchestrator` — which
+changes what a merge would achieve.**
+
+A subtree merge today would import `com.upirecovery`'s 14 domain classes as
+**dead code**: a second `Transaction`, a second `TransactionState`, and a
+parallel state machine that D-001 explicitly rejected. That is the outcome the
+unified domain model exists to prevent, so doing it now would work against the
+architecture rather than for it.
+
+**What I did instead:** absorbed the design (its `UNCERTAIN`/reconciliation
+insight is the backbone of the self-healing subsystem) and left the repository
+untouched.
+
+**What I did not do:** merge two git repositories. That restructures your
+workspace, is awkward to undo, and the case for it evaporated once recovery
+lived elsewhere. Options if you still want the history preserved:
+
+- **(c) port and archive** — the useful classes are already ported in spirit;
+  archive the repo with a README pointing here. *My recommendation now.*
+- **(b) subtree merge into `reference/self-healing-original/`** — keeps the
+  history verbatim and quarantines it from the build. Say the word and I will.
+
+### Original question
 
 `25 Self healing UPI` is a separate repository with its own history. Options:
 (a) keep separate and consume the platform's events; (b) merge in as a module
@@ -114,7 +198,14 @@ keeps your history, ends the two-repo drift. No action needed yet.
 
 ---
 
-## Q-8 · LATER — Which failure does the showcase demo by default?
+## Q-8 · RESOLVED — three selectable, credit timeout by default
+
+**Chosen: as recommended.** The showcase offers User Payment, Failure &
+Self-Healing (credit timeout, the default) and Compensation (credit refused).
+Wallet Payment is shown disabled and labelled "port exists, impl does not"
+rather than faked.
+
+### Original question
 
 The hero scenario. Candidates: credit timeout resolved by reconciliation
 (shows `UNCERTAIN` — the most interesting), credit hard-failure resolved by

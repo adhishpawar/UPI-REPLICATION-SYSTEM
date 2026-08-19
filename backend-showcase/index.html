@@ -66,8 +66,29 @@
     <label>payer <input id="payerVpa" size="18" placeholder="arjun@okaxis"></label>
     <label>payee <input id="payeeVpa" size="18" placeholder="priya@okaxis"></label>
     <label>₹ <input id="amount" size="6" value="250.00"></label>
-    <button id="run" class="run">Run</button>
+    <button id="run" class="run" disabled title="Sign in first">Run</button>
   </div>
+</section>
+
+<!--
+  Sign-in.
+  The backend now verifies an RS256 token issued by psp-service, so the
+  showcase can no longer simply assert who it is. It logs in like any other
+  client and carries the bearer token. This panel exists because the auth is
+  real, not to decorate the demo.
+-->
+<section class="auth" id="authPanel">
+  <div class="auth-row">
+    <span class="auth-label">Sign in</span>
+    <label>mobile <input id="mobile" size="16" placeholder="+919812300001"></label>
+    <label>device <input id="device" size="20" placeholder="demo-device-payer-1234"></label>
+    <label>MPIN <input id="mpin" size="6" type="password" value="1234"></label>
+    <button id="login" class="run">Sign in</button>
+    <span id="authState" class="auth-state">not signed in</span>
+  </div>
+  <p class="hint">Credentials are printed by <code>scripts/seed-demo-data.sh</code>. The token is
+     verified locally by the orchestrator against psp-service's published JWK Set — no shared secret,
+     and no call to psp on the payment path.</p>
 </section>
 
 <div id="banner" class="banner hidden"></div>

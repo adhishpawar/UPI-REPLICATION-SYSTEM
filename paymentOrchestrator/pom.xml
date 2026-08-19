@@ -169,6 +169,21 @@
 			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
 
+		<!-- ── OAuth2 Resource Server — validates psp-service's JWTs ───────── -->
+		<!-- Justification: identity previously arrived as an unauthenticated   -->
+		<!-- X-User-Id header "set by the API gateway". No gateway exists, so    -->
+		<!-- any caller could act as any user on a money-moving API.             -->
+		<!--                                                                     -->
+		<!-- psp-service already publishes its RSA public key as a JWK Set, so   -->
+		<!-- this service can verify RS256 tokens itself: no shared secret, no   -->
+		<!-- call to psp on the request path, and psp can rotate its key without -->
+		<!-- redeploying anything here. That is the whole point of asymmetric    -->
+		<!-- signing plus JWKS, and it was already half-built.                   -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+		</dependency>
+
 		<!-- ═══════════════════════════════════════════════════════════════ -->
 		<!-- TEST DEPENDENCIES                                               -->
 		<!-- ═══════════════════════════════════════════════════════════════ -->

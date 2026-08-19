@@ -67,6 +67,16 @@ public class GlobalExceptionHandler {
     }
 
     // 409 — Duplicate payment (idempotency key already processed)
+    /**
+     * 403: the caller is authenticated, but this is not their VPA.
+     * See {@link VpaOwnershipException} for why this is not a 404.
+     */
+    @ExceptionHandler(VpaOwnershipException.class)
+    public ResponseEntity<ErrorResponse> handleVpaOwnership(VpaOwnershipException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse.of(ex.getErrorCode(), ex.getMessage(), HttpStatus.FORBIDDEN));
+    }
+
     @ExceptionHandler(DuplicatePaymentException.class)
     public ResponseEntity<ErrorResponse> handleDuplicate(DuplicatePaymentException ex) {
         log.warn("Duplicate payment attempt: {}", ex.getMessage());

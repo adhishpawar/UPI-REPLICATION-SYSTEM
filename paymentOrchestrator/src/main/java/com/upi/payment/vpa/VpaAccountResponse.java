@@ -19,6 +19,8 @@ import lombok.*;
 @Builder
 public class VpaAccountResponse {
     private String  vpaAddress;
+    /** Owner of this VPA. Used to verify the payer is spending their own money. */
+    private java.util.UUID userId;
     private String  accountHolderName;
     private String  accountNumber;
     private String  ifscCode;

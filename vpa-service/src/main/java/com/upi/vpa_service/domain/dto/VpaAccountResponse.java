@@ -25,6 +25,17 @@ import lombok.*;
 @Builder
 public class VpaAccountResponse {
     private String  vpaAddress;
+
+    /**
+     * The user this VPA belongs to.
+     *
+     * <p>Included so a payment service can verify that the person initiating a
+     * payment actually owns the account it will be debited from. Without it,
+     * that check is impossible and any authenticated user can spend from any
+     * VPA they can name.
+     */
+    private java.util.UUID userId;
+
     private String  accountHolderName;
     private String  accountNumber;
     private String  ifscCode;

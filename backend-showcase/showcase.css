@@ -88,6 +88,24 @@ body {
 }
 .run:disabled { opacity: .5; cursor: wait; }
 
+/* ── Sign-in ─────────────────────────────────────────────────────────── */
+.auth {
+  padding: .75rem 1.25rem;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+}
+.auth-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; font-size: 12px; color: var(--fg-dim); }
+.auth-label { font: 600 11px/1 var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--fg-faint); }
+.auth input {
+  background: var(--bg); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: .4rem .5rem; font: 12px var(--mono);
+}
+.auth-state { font: 11px var(--mono); color: var(--fg-faint); margin-left: .3rem; }
+.auth-state.ok  { color: var(--ok); }
+.auth-state.bad { color: var(--bad); }
+.auth.signed-in { opacity: .6; }
+
 .banner {
   margin: .75rem 1.25rem 0; padding: .6rem .8rem; border-radius: 8px;
   font: 12px/1.5 var(--mono);

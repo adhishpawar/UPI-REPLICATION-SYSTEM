@@ -18,9 +18,83 @@
  */
 
 const API = localStorage.getItem('apiBase') || 'http://localhost:8083';
-const USER_ID = '11111111-1111-1111-1111-111111111111';
+const PSP = localStorage.getItem('pspBase') || 'http://localhost:8082';
+
+/**
+ * The bearer token, obtained by logging in to psp-service.
+ *
+ * Kept in memory only, deliberately. Persisting it in localStorage would make
+ * the demo marginally more convenient and would also mean any script on the
+ * origin could read it -- the standard XSS-token-theft path. A page that has
+ * to be signed in to each time is the honest trade for a page that talks to a
+ * money-moving API.
+ */
+let TOKEN = null;
 
 document.getElementById('apiBase').textContent = API;
+
+// ── Sign-in ────────────────────────────────────────────────────────────
+// The orchestrator verifies an RS256 token issued by psp-service. The
+// showcase therefore authenticates like any other client -- it cannot simply
+// assert an identity any more, which was the point of the change.
+['mobile', 'device'].forEach(id => {
+  const el = document.getElementById(id);
+  const saved = localStorage.getItem(id);
+  if (saved) el.value = saved;
+  el.addEventListener('change', () => localStorage.setItem(id, el.value));
+});
+
+document.getElementById('login').addEventListener('click', signIn);
+
+async function signIn() {
+  const mobileNumber = document.getElementById('mobile').value.trim();
+  const deviceId = document.getElementById('device').value.trim();
+  const mpin = document.getElementById('mpin').value.trim();
+  const state = document.getElementById('authState');
+
+  if (!mobileNumber || !deviceId || !mpin) {
+    state.textContent = 'mobile, device and MPIN are all required';
+    state.className = 'auth-state bad';
+    return;
+  }
+
+  state.textContent = 'signing in…';
+  state.className = 'auth-state';
+
+  try {
+    const res = await fetch(PSP + '/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobileNumber, deviceId, mpin }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      // psp distinguishes wrong-MPIN from locked-account from MPIN-not-set,
+      // so show what it actually said rather than a generic failure.
+      state.textContent = (data.errorCode || res.status) + ': ' + (data.message || '');
+      state.className = 'auth-state bad';
+      return;
+    }
+
+    TOKEN = data.accessToken;
+    const mins = Math.round((data.expiresIn || 0) / 60);
+    state.textContent = 'signed in as ' + data.userId.slice(0, 8) + '… (' + mins + ' min)';
+    state.className = 'auth-state ok';
+    document.getElementById('authPanel').classList.add('signed-in');
+    document.getElementById('run').disabled = false;
+    document.getElementById('run').title = '';
+
+  } catch (err) {
+    state.textContent = 'psp-service unreachable at ' + PSP;
+    state.className = 'auth-state bad';
+  }
+}
+
+/** Headers for a call to the payment API. */
+function authHeaders(extra) {
+  return Object.assign({ 'Authorization': 'Bearer ' + TOKEN }, extra || {});
+}
 
 // ── The flow graph ─────────────────────────────────────────────────────
 // One node per participant. Nodes are keyed by the `component` field the
@@ -244,6 +318,11 @@ async function run() {
   const payee = document.getElementById('payeeVpa').value.trim();
   const amount = document.getElementById('amount').value.trim();
 
+  if (!TOKEN) {
+    showBanner('Sign in first. The payment API requires a verified token from psp-service.', true);
+    return;
+  }
+
   if (!payer || !payee) {
     showBanner('Set payer and payee VPAs first. Run scripts/seed-demo-data.sh to create a pair.', true);
     return;
@@ -277,18 +356,23 @@ async function run() {
   try {
     const res = await fetch(API + '/api/v1/payments', {
       method: 'POST',
-      headers: {
+      headers: authHeaders({
         'Content-Type': 'application/json',
-        'X-User-Id': USER_ID,
-        'X-Device-Id': 'backend-showcase',
         'Idempotency-Key': key,
-      },
+      }),
       body: JSON.stringify(body),
     });
 
     const data = await res.json();
     if (!res.ok) {
-      showBanner('Rejected (' + res.status + '): ' + (data.message || JSON.stringify(data)), true);
+      // 401 and 403 are worth distinguishing out loud: one means the token is
+      // missing or stale, the other means the token is fine but this user does
+      // not own the VPA they are trying to spend from.
+      let hint = '';
+      if (res.status === 401) hint = ' — sign in again; the token may have expired.';
+      if (res.status === 403) hint = ' — that VPA belongs to a different user.';
+      showBanner('Rejected (' + res.status + '): '
+                 + (data.message || JSON.stringify(data)) + hint, true);
       touchNode('client', 'FAILED', res.status + ' rejected');
       btn.disabled = false;
       return;
@@ -333,7 +417,7 @@ async function watchUntilTerminal(txnId, btn) {
     await sleep(1000);
     try {
       const s = await fetch(API + '/api/v1/payments/' + txnId + '/status',
-        { headers: { 'X-User-Id': USER_ID } }).then(r => r.json());
+        { headers: authHeaders() }).then(r => r.json());
       if (TERMINAL.has(s.currentState)) {
         finish(s.currentState);
         break;

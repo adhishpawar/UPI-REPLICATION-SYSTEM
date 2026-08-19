@@ -88,12 +88,17 @@ offset is simply never committed. The message is effectively lost until a
 rebalance. The correct pattern is to let the exception propagate so the
 container's error handler retries and routes to the DLT.
 
-### G-08 · S2 · FIXED — `SecurityConfig` is an empty class
-`paymentOrchestrator/.../config/SecurityConfig.java` — `public class
-SecurityConfig {}` with `spring-boot-starter-security` on the classpath. Every
-endpoint gets Spring Security's default HTTP-Basic wall with a generated
-password. Identity is taken from an unauthenticated `X-User-Id` header that
-nothing sets, so any caller can act as any user.
+### G-08 · S1 · FIXED — `SecurityConfig` was empty, and identity was a header
+`public class SecurityConfig {}` with `spring-boot-starter-security` on the
+classpath meant Spring Boot's default applied: every endpoint behind HTTP Basic
+with a generated password. Worse, identity came from an unauthenticated
+`X-User-Id` header "set by the API Gateway" - and no gateway existed, so **any
+caller could move any user's money**.
+
+Now an OAuth2 resource server validating psp-service's RS256 tokens against its
+published JWK Set. No shared secret (this service holds only the public half),
+no call to psp on the request path, and psp can rotate its signing key without
+redeploying anything here.
 
 ### G-09 · S2 · FIXED — `paymentOrchestrator` has no runtime configuration
 `application.properties` contains one line. No datasource, no JPA, no Flyway,
@@ -187,10 +192,24 @@ visible once the two were wired together.
 resolution endpoint returned the stored value. The orchestrator then asked the
 bank to debit `NTUxMzE5ODkzNTM1`.
 
-> Note: that method is Base64, which is **encoding, not encryption**, despite
-> the surrounding comments. It hides the value from a casual glance at the
-> table and from nothing else. The mapper's own TODO to move to AES-256 still
-> stands and is unaddressed.
+**Follow-up, now also fixed.** That method was Base64 - **encoding, not
+encryption** - while the column comment claimed "Stored AES-256 encrypted". A
+security control that is documented but absent is more dangerous than one known
+to be missing, because nobody goes looking. Replaced with real AES-256-GCM in
+`AccountNumberCipher`.
+
+GCM specifically, because it is authenticated: tampering with a stored
+ciphertext is detected rather than silently decrypting to some other account
+number. For a field that determines where money goes, integrity matters as much
+as confidentiality.
+
+Stored values carry a `v1:` prefix so the previous Base64 rows remain readable -
+a hard cutover would have made every existing VPA unresolvable and every payment
+to an existing payee fail. Both paths verified working.
+
+**Still open:** the key lives in configuration with a committed development
+default. That is not key management; production needs a KMS, rotation, and a key
+id in the ciphertext. The version prefix is the hook that makes that possible.
 
 ### G-26 · S3 · OPEN — `bank-service` still uses `ddl-auto=update`
 The cause of G-21. Schema drift is currently repaired by hand in `data.sql`.
@@ -206,6 +225,52 @@ Payment + PaymentAttempt before recovery is allowed to re-attempt a leg, or
 from the local repository, so the first `spring-boot:run` and any `test` run
 need network access. Aligning the parent to 3.5.x (as the other services use)
 would resolve it.
+
+### G-29 - S2 - FIXED - psp-service could not be started from a clean clone
+The RSA signing keys it reads from the classpath are gitignored (correctly - a
+private key must never be committed) but there was no way to regenerate them,
+so the service failed at bean creation with a FileNotFoundException.
+"Secrets are not in the repository" is only half a secrets strategy; the other
+half is a documented, repeatable way to obtain them. Added
+`scripts/generate-psp-keys.sh`.
+
+### G-30 - S2 - FIXED - The platform's only real test did not compile
+`JwtTokenProviderTest` declared its field as `SecurityConfig`, which has none of
+the methods it calls. Because `spring-boot:run` runs test-compile first, this
+also **prevented psp-service from starting at all**. A test that does not
+compile is worse than no test: it looks like coverage in a file listing and
+provides none. Now compiles; 5 tests pass.
+
+Its `generateExpiredToken` call was satisfied by minting the expired token in
+the test rather than adding that method to `JwtTokenProvider` - a security
+component should not carry a method whose only purpose is producing invalid
+credentials.
+
+### G-31 - S1 - FIXED - The JWKS endpoint had never worked
+Two independent defects on the one endpoint whose entire purpose is letting
+other services verify tokens without credentials:
+
+1. `SecurityConfig` permitted `/.well-known/jwks.json` while the controller
+   served it under its class-level prefix at
+   `/api/v1/auth/.well-known/jwks.json`. The real URL fell through to
+   `.anyRequest().authenticated()` and returned **403**.
+2. The handler declared `@Autowired RSAPublicKey publicKey` as a **method
+   parameter**. `@Autowired` has no meaning there; Spring MVC tried to bind it
+   from the request, found nothing, and returned **500**.
+
+The key is now a constructor dependency and the real path is permitted.
+
+### G-32 - S3 - FIXED - psp-service pulled in Redis and used none of it
+`spring-boot-starter-data-redis` was declared but no code referenced it. Spring
+Boot still auto-configured a connection factory and health indicator, which
+failed against a Redis that is not running: a stack trace every few seconds and
+a DOWN health status for a dependency the service does not have. Removed.
+
+### G-33 - S1 - FIXED - Any authenticated user could spend from any VPA
+Nothing verified that the payer VPA belonged to the caller. The check was
+impossible while identity arrived as a caller-supplied header - it would have
+compared a claim against a fact and rejected nothing. With a verified token the
+comparison means something, and it is now enforced (403 `VPA_NOT_OWNED`).
 
 ## B. Missing components
 

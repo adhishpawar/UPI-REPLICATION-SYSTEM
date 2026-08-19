@@ -88,6 +88,7 @@ public class VpaServiceImpl implements VpaService {
         return vpaRepository.findByVpaAddressAndIsActiveTrue(vpaAddress)
                 .map(v -> com.upi.vpa_service.domain.dto.VpaAccountResponse.builder()
                         .vpaAddress(v.getVpaAddress())
+                        .userId(v.getUserId())
                         .accountHolderName(v.getAccountHolderName())
                         // Stored obfuscated by VpaMapper.encrypt(); must be
                         // reversed here or the caller receives a value no bank

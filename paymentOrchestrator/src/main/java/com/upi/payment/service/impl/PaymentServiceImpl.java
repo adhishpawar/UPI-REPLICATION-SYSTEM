@@ -7,6 +7,7 @@ import com.upi.payment.domain.entity.TransactionEvent;
 import com.upi.payment.domain.enums.TransactionStatus;
 import com.upi.payment.exception.TransactionNotFoundException;
 import com.upi.payment.exception.VpaNotFoundException;
+import com.upi.payment.exception.VpaOwnershipException;
 import com.upi.payment.mapper.PaymentMapper;
 import com.upi.payment.observability.ExecutionRecorder;
 import com.upi.payment.repository.TransactionEventRepository;
@@ -109,6 +110,20 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (payer == null || Boolean.FALSE.equals(payer.getIsActive())) {
             throw new VpaNotFoundException(request.getPayerVpa());
+        }
+
+        // Does this VPA actually belong to the caller?
+        //
+        // This check was impossible before authentication was real: identity
+        // arrived as an X-User-Id header the caller chose, so comparing it to
+        // the VPA's owner compared a claim against a fact and would have
+        // rejected nothing. Now that the user id comes from a signed token,
+        // the comparison means something -- and without it, any authenticated
+        // user could spend from any VPA they could name.
+        if (payer.getUserId() != null && !payer.getUserId().equals(userId)) {
+            log.warn("User {} attempted to pay from VPA {} owned by {}",
+                    userId, request.getPayerVpa(), payer.getUserId());
+            throw new VpaOwnershipException(request.getPayerVpa());
         }
         if (payee == null || Boolean.FALSE.equals(payee.getIsActive())) {
             throw new VpaNotFoundException(request.getPayeeVpa());

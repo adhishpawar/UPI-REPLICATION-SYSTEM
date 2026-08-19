@@ -55,6 +55,15 @@ server:
   error:
     include-message: always
 
+# ── Authentication ─────────────────────────────────────────────────────────
+# Tokens are verified locally against psp-service's published public key.
+# There is no call to psp on the request path, and no shared secret: this
+# service holds only the public half and could not mint a token if it tried.
+security:
+  jwt:
+    jwk-set-uri: http://localhost:8082/api/v1/auth/.well-known/jwks.json
+    issuer: upi-psp-service
+
 # ── Downstream services ────────────────────────────────────────────────────
 services:
   vpa:
