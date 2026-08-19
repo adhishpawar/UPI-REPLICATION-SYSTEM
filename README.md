@@ -13,7 +13,7 @@ about a system where correctness is non-negotiable.
 ## What it does today
 
 ```
-POST /api/v1/payments
+POST /api/v1/payments        Bearer token, verified against psp-service's JWK Set
       |
       v
   Payment Orchestrator ──HTTP──> VPA Service        (who am I paying?)
@@ -51,6 +51,15 @@ Verified end to end against PostgreSQL:
 | credit refused | `REVERSED` | payer net **0.00**, three ledger postings |
 | duplicate `Idempotency-Key` | same transaction | **no additional money** |
 
+and refuses what it should:
+
+| Attempt | Result |
+|---|---|
+| payment with no token | `401` |
+| payment with a forged token | `401` |
+| payment from a VPA you do not own | `403 VPA_NOT_OWNED` |
+| reading another user's transaction | `404` (not 403 — a 403 would confirm the id exists) |
+
 ---
 
 ## Running it
@@ -60,7 +69,11 @@ Verified end to end against PostgreSQL:
 
 ```bash
 createdb -U postgres payment_db          # once
+bash scripts/generate-psp-keys.sh        # once — RSA keypair for signing JWTs
 ```
+
+The keys are gitignored, as a private signing key should be. The script is how
+you get them; without it psp-service cannot start.
 
 Four services, each in its own terminal:
 
@@ -71,14 +84,18 @@ cd paymentOrchestrator && ./mvnw    -DskipTests spring-boot:run   # :8083  (firs
 cd bank-service        && ./mvnw -o -DskipTests spring-boot:run   # :8084
 ```
 
-Seed a payer and payee, then open the showcase:
+Seed two registered users with VPAs and a funded account, then open the showcase:
 
 ```bash
 bash scripts/seed-demo-data.sh
 bash backend-showcase/run.sh             # http://localhost:8090
 ```
 
-Paste the printed VPAs into the showcase, pick a scenario, press Run.
+The seed script prints a mobile number, device id and MPIN. Sign in with them in
+the showcase, paste the printed VPAs, pick a scenario, press Run.
+
+The sign-in is not decoration: the payment API rejects an unauthenticated call
+with 401, and rejects a payment from a VPA you do not own with 403.
 
 ---
 
@@ -89,7 +106,7 @@ Paste the printed VPAs into the showcase, pick a scenario, press Run.
 | `paymentOrchestrator/` | the payment core — saga, state machine, outbox, recovery, execution stream |
 | `bank-service/` | the money-holder — accounts, ledger, idempotent postings, reconciliation query |
 | `vpa-service/` | VPA directory |
-| `psp-service/` | identity, MPIN, JWT/JWKS |
+| `psp-service/` | identity, MPIN, RS256 tokens, JWK Set |
 | `backend-showcase/` | independent visualiser. Static HTML/JS. **Delete it and nothing breaks.** |
 | `scripts/` | seed and smoke-test |
 | `docs/` | architecture, decisions, gaps, failure spec — **start at `docs/README.md`** |

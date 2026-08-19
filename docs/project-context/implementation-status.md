@@ -26,15 +26,16 @@ uncertain payment repairs itself.
 | M5 failure injection + uncertainty | `DONE` | `TIMEOUT_CREDIT`, `REJECT_CREDIT`, `TIMEOUT_DEBIT` reproducible on demand |
 | M6 self-healing | `DONE` | credit timeout → `UNCERTAIN_CREDIT` → reconcile → `COMPLETED`, no double credit |
 | M7 backend showcase | `DONE` | static page on :8090 driving and rendering real payments |
-| M8 money tests | `PARTIAL` | 14 state-machine invariant tests pass; integration tests still shell-based |
+| M8 money tests | `PARTIAL` | 14 state-machine invariant tests + 5 JWT tests pass; integration tests still shell-based |
+| M11 real authentication (Q-5) | `DONE` | RS256 tokens verified against psp's JWK Set; ownership enforced |
 
 ## Component status
 
 | Component | Status | Notes |
 |---|---|---|
-| vpa-service (:8081) | `DONE` | + internal `/account` endpoint returning the decrypted account number |
-| psp-service (:8082) | `DONE` | unchanged this sprint |
-| paymentOrchestrator (:8083) | `DONE` | **runs.** saga, outbox, funds movers, recovery, execution stream |
+| vpa-service (:8081) | `DONE` | + internal `/account` endpoint; account numbers now **AES-256-GCM** encrypted at rest (was Base64) |
+| psp-service (:8082) | `DONE` | JWKS endpoint fixed (had never worked), keys bootstrappable, unused Redis removed, its test compiles for the first time |
+| paymentOrchestrator (:8083) | `DONE` | **runs.** saga, outbox, funds movers, recovery, execution stream, **JWT-authenticated** |
 | bank-service (:8084) | `DONE` | + two-phase idempotent postings, reconciliation query, failure injection |
 | backend-showcase (:8090) | `DONE` | static HTML/JS on `jwebserver`, no build step |
 | user-service | frozen | superseded (D-004) |
@@ -55,14 +56,30 @@ uncertain payment repairs itself.
 | **Compensate a known failure** | **yes** | `REJECT_CREDIT` → `REVERSED`, payer net zero |
 | **Escalate what it cannot resolve** | **yes** | `MANUAL_REVIEW` after the attempt budget |
 | **Observe the whole thing live** | **yes** | SSE stream + persisted trace |
+| **Reject an unauthenticated payment** | **yes** | 401 |
+| **Reject spending from a VPA you do not own** | **yes** | 403 `VPA_NOT_OWNED` |
+| **Hide another user's transaction** | **yes** | 404 |
 
 ### Verified run (2026-08-19)
 
 ```
-happy path        -> COMPLETED   payer 8874.00->8674.00   payee  875.00->1075.00
-credit timeout    -> COMPLETED   payer 8674.00->8524.00   payee 1075.00->1225.00
-credit rejected   -> REVERSED    payer 8524.00->8524.00   payee 1225.00->1225.00
-idempotent replay -> same txn, balances unchanged
+[1] Authentication
+  PASS  logged in, token issued
+  PASS  payment without a token rejected (401)
+  PASS  payment with a forged token rejected (401)
+[2] VPA ownership
+  PASS  spending from someone else's VPA rejected (403)
+[3] Payment scenarios
+  PASS  happy path       -> COMPLETED  payer 10000.00->9800.00  payee 0->200.00
+  PASS  credit timeout   -> COMPLETED  payer  9800.00->9650.00  payee 200.00->350.00
+  PASS  credit rejected  -> REVERSED   payer  9650.00->9650.00  payee 350.00->350.00
+[4] Idempotency
+  PASS  duplicate key returned the same transaction
+  PASS  duplicate moved no additional money
+[5] Cross-user read
+  PASS  another user's transaction is invisible (404, not 403)
+
+PASS: 10   FAIL: 0
 ```
 
 ## Test inventory
@@ -82,8 +99,8 @@ simultaneous payments on one account, and a property test asserting
 
 ```bash
 # 1. PostgreSQL 17 on :5432 (postgres/root) must be running.
-#    payment_db is created automatically by Flyway on first boot; create the
-#    database itself once:  createdb -U postgres payment_db
+#    createdb -U postgres payment_db
+#    bash scripts/generate-psp-keys.sh     # RSA keypair, gitignored, once
 
 # 2. Three backend services, each in its own terminal
 cd vpa-service          && ./mvnw -o -DskipTests spring-boot:run    # :8081
