@@ -4,10 +4,17 @@
 > alternatives, trade-offs, consequences. Full ADRs for the weighty ones live
 > in `docs/adr/`.
 > Status: `PROPOSED` (awaiting your confirmation) · `ACCEPTED` · `SUPERSEDED`.
+>
+> **How each was decided.** D-002, D-003 and D-006 follow from your answers to
+> Q-1 ("bank first, with the port in place") and Q-2 ("Postgres-only outbox,
+> Kafka later"). D-001, D-004, D-005, D-007 and D-008 were engineering calls
+> made within the sprint and are now implemented — they are marked ACCEPTED
+> because the code depends on them, not because they have been reviewed.
+> Reversing any of them is still cheap; say so and it changes.
 
 ---
 
-## D-001 · Single writer for transaction state — **PROPOSED**
+## D-001 · Single writer for transaction state — **ACCEPTED** (implemented)
 
 **Context.** Two systems both model a transaction lifecycle and both claim the
 right to write its status: `paymentOrchestrator` (12 states, writes
@@ -39,7 +46,7 @@ real value was anyway.
 
 ---
 
-## D-002 · Modular monolith for Phase 1, not 8 microservices — **PROPOSED**
+## D-002 · Modular monolith for Phase 1, not 8 microservices — **ACCEPTED** (Q-2)
 
 **Context.** The master plan specifies 8 deployable services. Four of them do
 not exist. Kafka and Docker are not running; PostgreSQL is the only working
@@ -69,7 +76,7 @@ is itself the lesson.
 
 ---
 
-## D-003 · Wallet is a funding source, not a second payment system — **PROPOSED**
+## D-003 · Wallet is a funding source, not a second payment system — **ACCEPTED** (Q-1; port built, wallet impl pending)
 
 **Context.** `Docs/index.html` designs the wallet as a standalone platform with
 its own gateway, user service, transaction service, outbox publisher, and
@@ -101,7 +108,7 @@ reasoning, reconciliation service — are absorbed into the platform.
 
 ---
 
-## D-004 · `user-service` is superseded; `psp-service` owns identity — **PROPOSED**
+## D-004 · `user-service` is superseded; `psp-service` owns identity — **ACCEPTED**
 
 **Context.** `user-service` (Sep 2025) does thin user CRUD with
 `ddl-auto=create`. `psp-service` (Feb 2026) does registration, MPIN, JWT
@@ -119,7 +126,7 @@ left untouched.
 
 ---
 
-## D-005 · Learning targets replace the aspirational NFRs — **PROPOSED**
+## D-005 · Learning targets replace the aspirational NFRs — **ACCEPTED**
 
 **Context.** The self-healing design states 100,000 TPS sustained, 99.99%
 uptime, "RBI-compliant and auditable", and seven Spring AI agents. None is
@@ -142,7 +149,7 @@ and re-justified individually if and when a real need appears.
 
 ---
 
-## D-006 · Transactional outbox with a swappable relay — **PROPOSED**
+## D-006 · Transactional outbox with a swappable relay — **ACCEPTED** (Q-2)
 
 **Context.** The saga publishes to Kafka inside `@Transactional`, before
 commit, and calls it an outbox (G-04). Kafka is not running.
@@ -170,7 +177,7 @@ drawn wrong.
 
 ---
 
-## D-007 · Add `UNCERTAIN` and `RECONCILING` to the state machine — **PROPOSED**
+## D-007 · Add leg-specific uncertain states — **ACCEPTED** (implemented, revised)
 
 **Context.** A timed-out funds movement currently has no representable state
 (G-05).
@@ -179,6 +186,18 @@ drawn wrong.
 (actively determining the truth). Only reconciliation may move a transaction
 out of `UNCERTAIN`. Add `MANUAL_REVIEW` as the terminal state for
 transactions the system cannot resolve.
+
+**Revised during implementation.** A single pair proved too coarse. Because
+`UNCERTAIN` could not say *which* leg was in doubt, `RECONCILING` had to permit
+every conclusion any leg might need — and a property test then showed that
+`DEBITED` could reach `DEBIT_FAILED`, recording a confirmed debit as one that
+never happened. The states are now leg-specific:
+`UNCERTAIN_DEBIT|_CREDIT|_REVERSAL` and
+`RECONCILING_DEBIT|_CREDIT|_REVERSAL`.
+
+The change paid for itself twice: the invariant now holds by construction, and
+the leg-inference logic in both the detector and the recovery worker was
+deleted, because the state names the leg.
 
 **Alternatives considered.** *Treat a timeout as failure and reverse.*
 Rejected: it creates money whenever the timeout was a false negative — the
@@ -189,7 +208,7 @@ system that always self-heals is a system that is guessing.
 
 ---
 
-## D-008 · Showcase is vanilla HTML/JS served by `jwebserver` — **PROPOSED**
+## D-008 · Showcase is vanilla HTML/JS served by `jwebserver` — **ACCEPTED** (implemented)
 
 **Context.** The showcase must be independently runnable, deletable, and free
 of backend imports. Node/npm are not installed on this machine.
