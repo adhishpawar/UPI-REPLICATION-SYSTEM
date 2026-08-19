@@ -83,6 +83,27 @@ public class VpaServiceImpl implements VpaService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public com.upi.vpa_service.domain.dto.VpaAccountResponse resolveAccount(String vpaAddress) {
+        return vpaRepository.findByVpaAddressAndIsActiveTrue(vpaAddress)
+                .map(v -> com.upi.vpa_service.domain.dto.VpaAccountResponse.builder()
+                        .vpaAddress(v.getVpaAddress())
+                        .accountHolderName(v.getAccountHolderName())
+                        // Stored obfuscated by VpaMapper.encrypt(); must be
+                        // reversed here or the caller receives a value no bank
+                        // recognises. (Note: that method is Base64, which is
+                        // encoding, not encryption -- it hides the value from a
+                        // casual glance at the table and from nothing else. The
+                        // mapper's own TODO to move to AES-256 still stands.)
+                        .accountNumber(vpaMapper.decrypt(v.getAccountNumber()))
+                        .ifscCode(v.getIfscCode())
+                        .pspHandle(v.getPspHandle())
+                        .isActive(v.getIsActive())
+                        .build())
+                .orElseThrow(() -> new VpaNotFoundException(vpaAddress));
+    }
+
+    @Override
     @Transactional
     public void deactivateVpa(String vpaAddress, UUID requestingUserId) {
         VpaRegistration vpa = vpaRepository.findByVpaAddress(vpaAddress)

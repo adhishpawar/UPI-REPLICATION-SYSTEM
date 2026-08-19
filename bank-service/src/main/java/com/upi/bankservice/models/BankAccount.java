@@ -74,8 +74,18 @@ public class BankAccount {
         return "ACCID" + String.format("%010d", new Random().nextInt(1_000_000_000));
     }
 
+    /**
+     * Generate a 12-digit numeric account number.
+     *
+     * <p>Real Indian bank account numbers are numeric. The previous version
+     * prefixed {@code "ANN"}, which made every account this service issued
+     * unusable for VPA registration -- vpa-service validates
+     * {@code ^[0-9]{9,18}$} and correctly rejected it.
+     */
     private String generateAccountNumber() {
-        return "ANN" + String.format("%010d", new Random().nextInt(1_000_000_000));
+        Random r = new Random();
+        return String.format("%06d", r.nextInt(1_000_000))
+             + String.format("%06d", r.nextInt(1_000_000));
     }
 
 

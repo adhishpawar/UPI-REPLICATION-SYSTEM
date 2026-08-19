@@ -35,9 +35,20 @@ public class Bank {
         this.ifscCode = generateIfscCode(name);
     }
 
+    /**
+     * Generate a well-formed IFSC: {@code AAAA0BBBBBB}.
+     *
+     * <p>Four letters for the bank, a mandatory {@code 0} in the fifth
+     * position, then six branch characters. The previous version emitted four
+     * letters plus seven digits, which is the right length but the wrong shape
+     * -- and vpa-service, which validates the real format, rejected every
+     * account this service created. A cross-service format mismatch that only
+     * surfaced when the two were finally wired together.
+     */
     private String generateIfscCode(String bankName) {
-        String prefix = bankName.substring(0, Math.min(4, bankName.length())).toUpperCase();
-        return prefix + String.format("%07d", new Random().nextInt(9999999));
+        String letters = bankName.replaceAll("[^A-Za-z]", "").toUpperCase();
+        String prefix = (letters + "XXXX").substring(0, 4);
+        return prefix + "0" + String.format("%06d", new Random().nextInt(1_000_000));
     }
 
     private String generateBankId() {

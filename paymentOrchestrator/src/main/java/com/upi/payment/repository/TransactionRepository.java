@@ -84,6 +84,17 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     boolean existsByRrn(String rrn);
 
     /**
+     * The detector's sweep: in-flight payments whose reply is overdue.
+     *
+     * <p>Backed by a partial index on {@code state_deadline_at} -- completed
+     * payments vastly outnumber in-flight ones and must not be scanned.
+     */
+    List<Transaction> findByCurrentStateInAndStateDeadlineAtBefore(
+            java.util.Collection<TransactionStatus> states, LocalDateTime before);
+
+    List<Transaction> findTop50ByOrderByInitiatedAtDesc();
+
+    /**
      * Summary stats for a user — total paid, total received (future analytics).
      */
     @Query("""

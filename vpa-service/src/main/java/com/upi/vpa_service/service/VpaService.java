@@ -16,6 +16,15 @@ public interface VpaService {
     //Throws VpaNotFoundException if VPA does not exist or is inactive
     VpaResolutionResponse resolveVpa(String vpaAddress);
 
+    /**
+     * Resolve a VPA to full account details, including the account number.
+     *
+     * <p>Service-to-service only: the Payment Orchestrator needs an account
+     * number to move money, whereas a payer's app needs only a name. See
+     * {@link com.upi.vpa_service.domain.dto.VpaAccountResponse}.
+     */
+    com.upi.vpa_service.domain.dto.VpaAccountResponse resolveAccount(String vpaAddress);
+
     void deactivateVpa(String vpaAddress, UUID requestingUserId);   //Soft delete
 
     boolean isVpaActive(String vpaAddress); //Light weight boolean check

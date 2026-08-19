@@ -34,8 +34,20 @@ public class TransactionEvent {
     @Column(name="description", length=500, updatable=false)
     private String description;
 
+    /**
+     * Optional JSON snapshot of whatever produced this transition.
+     *
+     * <p>{@code @JdbcTypeCode(JSON)} is required, not decorative.
+     * {@code columnDefinition = "JSONB"} only tells Hibernate what DDL to
+     * generate; it does not change how the value is <em>bound</em>. Without
+     * the type code Hibernate binds a Java String as {@code varchar} and
+     * PostgreSQL refuses the insert outright:
+     * <pre>column "event_payload" is of type jsonb but expression is of type character varying</pre>
+     * This failed on the very first end-to-end payment.
+     */
     @Column(name="event_payload", columnDefinition="JSONB")
-    private String eventPayload;  // JSON string — flexible schema for bank responses
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    private String eventPayload;
 
     @Column(name="triggered_by", length=100, updatable=false)
     private String triggeredBy;

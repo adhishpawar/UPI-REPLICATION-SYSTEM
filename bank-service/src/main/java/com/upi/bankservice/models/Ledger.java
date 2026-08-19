@@ -5,8 +5,24 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+/**
+ * A single-sided posting against an account.
+ *
+ * <p><b>Constraint change.</b> {@code tx_id} previously carried
+ * {@code unique = true}. That made it physically impossible for one
+ * transaction to have both a debit and a credit posting -- so an intra-bank
+ * transfer could never be recorded in full, and the ledger could not balance.
+ *
+ * <p>The correct grain is one posting per (transaction, direction):
+ * a transaction may have a DEBIT, a CREDIT and a REVERSAL, but never two of
+ * the same kind. That constraint is also what makes a repeated funds-movement
+ * request safe: the second attempt violates it and is recognised as a
+ * duplicate rather than posting again.
+ */
 @Entity
-@Table(name = "ledger")
+@Table(name = "ledger",
+       uniqueConstraints = @UniqueConstraint(
+               name = "uq_ledger_tx_leg", columnNames = {"tx_id", "type"}))
 public class Ledger {
 
     @Id
@@ -15,8 +31,16 @@ public class Ledger {
     @Column(name = "ledger_id", updatable = false, nullable = false)
     private UUID ledgerId;
 
-    @Column(name = "tx_id", nullable = false, unique = true)
+    @Column(name = "tx_id", nullable = false)
     private String txId;
+
+    /** Retrieval Reference Number of the originating payment, when known. */
+    @Column(name = "rrn", length = 20)
+    private String rrn;
+
+    /** This posting's own reference, quoted back to the orchestrator. */
+    @Column(name = "reference", length = 64)
+    private String reference;
 
     @Column(name = "account_number", nullable = false)
     private String accountNumber;
@@ -44,7 +68,13 @@ public class Ledger {
     }
 
     // --- Enums ---
-    public enum TransactionType { DEBIT, CREDIT }
+    /**
+     * REVERSAL is a compensating credit, kept distinct from an ordinary
+     * CREDIT. Collapsing the two would make "was this payment reversed?"
+     * unanswerable from the ledger, and a ledger that cannot answer that is
+     * not an audit trail.
+     */
+    public enum TransactionType { DEBIT, CREDIT, REVERSAL }
     public enum TransactionStatus { SUCCESS, FAILED, PENDING }
 
     // --- Getters and Setters ---
@@ -71,6 +101,12 @@ public class Ledger {
 
     public LocalDateTime getCreatedAt() { return createdAt; }
 
+    public String getRrn() { return rrn; }
+    public void setRrn(String rrn) { this.rrn = rrn; }
+
+    public String getReference() { return reference; }
+    public void setReference(String reference) { this.reference = reference; }
+
     // --- Custom Builder ---
     public static class LedgerBuilder {
         private String txId;
@@ -79,6 +115,11 @@ public class Ledger {
         private TransactionType type;
         private TransactionStatus status;
         private BigDecimal balanceAfter;
+        private String rrn;
+        private String reference;
+
+        public LedgerBuilder rrn(String rrn) { this.rrn = rrn; return this; }
+        public LedgerBuilder reference(String reference) { this.reference = reference; return this; }
 
         public LedgerBuilder txId(String txId) { this.txId = txId; return this; }
         public LedgerBuilder accountNumber(String accountNumber) { this.accountNumber = accountNumber; return this; }
@@ -95,6 +136,8 @@ public class Ledger {
             ledger.setType(this.type);
             ledger.setStatus(this.status);
             ledger.setBalanceAfter(this.balanceAfter);
+            ledger.setRrn(this.rrn);
+            ledger.setReference(this.reference);
             return ledger;
         }
     }

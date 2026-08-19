@@ -30,4 +30,18 @@ public class PaymentInitiationRequest {
 
     @Size(max = 500)
     private String remarks;
+
+    /**
+     * Demo-only: names a deterministic failure to inject downstream.
+     *
+     * <p>Null in normal operation, and no failure occurs unless it is set.
+     * Present on the request rather than in configuration so a single payment
+     * can be made to fail on demand without affecting any other -- which is
+     * what makes the recovery path demonstrable rather than theoretical.
+     *
+     * <p>Accepted values: {@code TIMEOUT}, {@code SLOW}, {@code SERVER_ERROR},
+     * {@code REJECT}. See docs/testing/failure-scenarios.md.
+     */
+    @Size(max = 40)
+    private String simulate;
 }

@@ -1,6 +1,5 @@
 package com.upi.payment.statemachine;
 
-
 import com.upi.payment.domain.enums.TransactionStatus;
 import com.upi.payment.exception.InvalidStateTransitionException;
 import org.springframework.stereotype.Component;
@@ -10,93 +9,102 @@ import java.util.EnumSet;
 import java.util.Map;
 import java.util.Set;
 
+import static com.upi.payment.domain.enums.TransactionStatus.*;
+
+/**
+ * The single authority on what a payment is allowed to do next.
+ *
+ * <p>Structure: {@code EnumMap<State, EnumSet<AllowedNext>>}. {@code EnumMap}
+ * is array-backed and indexed by ordinal; {@code EnumSet} is a bitmask in a
+ * single long. Both are O(1) with no hashing and no allocation on lookup.
+ *
+ * <p><b>This guard has already earned its keep.</b> The saga used to publish a
+ * debit command while leaving the transaction in {@code PAYEE_VALIDATED}; when
+ * the reply arrived it attempted {@code PAYEE_VALIDATED -> DEBITED}, which is
+ * not a legal transition, and this class threw. The state machine was right
+ * and the saga was wrong. That is exactly what a guard is for, and it is why
+ * state must never be assigned by hand anywhere else in the codebase.
+ *
+ * <p><b>Ownership (D-001).</b> This class is reached only from the Payment
+ * Orchestrator. Recovery never transitions a transaction directly; it emits a
+ * {@code RecoveryDecision} which the orchestrator then applies through here.
+ * Two writers of transaction state means no source of truth for whether money
+ * moved.
+ */
 @Component
 public class TransactionStateMachine {
 
-    // ALGORITHM: EnumMap<State, EnumSet<AllowedNextStates>>
-    // EnumMap: O(1) lookup, backed by array indexed by enum ordinal.
-    //          More memory-efficient than HashMap for enum keys.
-    // EnumSet: O(1) contains(), packed into a single long bitmask.
-    //          64-bit long can hold up to 64 enum values — perfect here.
-    private static final Map<TransactionStatus, Set<TransactionStatus>> ALLOWED_TRANSITIONS;
+    private static final Map<TransactionStatus, Set<TransactionStatus>> ALLOWED;
 
     static {
-        ALLOWED_TRANSITIONS = new EnumMap<>(TransactionStatus.class);
+        ALLOWED = new EnumMap<>(TransactionStatus.class);
 
-        //Every Valid Transition: from state -> set of valid next states
-        ALLOWED_TRANSITIONS.put(TransactionStatus.INITIATED,
-                EnumSet.of(TransactionStatus.PAYEE_VALIDATED,
-                        TransactionStatus.FAILED));  //VPA lookup fail
+        // ── Pre-money. Failure here is free: nothing has moved. ───────────
+        ALLOWED.put(INITIATED,          EnumSet.of(PAYEE_VALIDATED, FAILED));
+        ALLOWED.put(PAYEE_VALIDATED,    EnumSet.of(DEBIT_REQUESTED, FAILED));
 
-        ALLOWED_TRANSITIONS.put(TransactionStatus.PAYEE_VALIDATED,
-                EnumSet.of(TransactionStatus.DEBIT_REQUESTED,
-                        TransactionStatus.FAILED));
+        // ── Debit leg. Three outcomes, not two: yes, no, and unknown. ─────
+        ALLOWED.put(DEBIT_REQUESTED,    EnumSet.of(DEBITED, DEBIT_FAILED, UNCERTAIN));
 
-        ALLOWED_TRANSITIONS.put(TransactionStatus.DEBIT_REQUESTED,
-                EnumSet.of(TransactionStatus.DEBITED,
-                        TransactionStatus.DEBIT_FAILED));
+        // ── Credit leg. Same three outcomes. ──────────────────────────────
+        ALLOWED.put(DEBITED,            EnumSet.of(CREDIT_REQUESTED, UNCERTAIN));
+        ALLOWED.put(CREDIT_REQUESTED,   EnumSet.of(CREDITED, CREDIT_FAILED, UNCERTAIN));
+        ALLOWED.put(CREDITED,           EnumSet.of(COMPLETED));
 
-        ALLOWED_TRANSITIONS.put(TransactionStatus.DEBITED,
-                EnumSet.of(TransactionStatus.CREDIT_REQUESTED,
-                        TransactionStatus.FAILED));
+        // ── Compensation. A known credit failure after a committed debit. ─
+        ALLOWED.put(CREDIT_FAILED,      EnumSet.of(REVERSAL_INITIATED));
+        ALLOWED.put(REVERSAL_INITIATED, EnumSet.of(REVERSED, REVERSAL_FAILED, UNCERTAIN));
+        // Compensation failing is not "failed" -- money is still missing.
+        ALLOWED.put(REVERSAL_FAILED,    EnumSet.of(MANUAL_REVIEW, REVERSAL_INITIATED));
 
-        ALLOWED_TRANSITIONS.put(TransactionStatus.CREDIT_REQUESTED,
-                EnumSet.of(TransactionStatus.CREDITED,
-                        TransactionStatus.CREDIT_FAILED));
+        // ── Uncertainty. The only way OUT of UNCERTAIN is through
+        //    reconciliation. There is deliberately no UNCERTAIN -> COMPLETED
+        //    and no UNCERTAIN -> REVERSED edge: nothing may decide the
+        //    outcome of a payment without first establishing the facts.
+        ALLOWED.put(UNCERTAIN,          EnumSet.of(RECONCILING));
+        ALLOWED.put(RECONCILING,        EnumSet.of(
+                COMPLETED,           // the money-holder confirms the credit landed
+                REVERSAL_INITIATED,  // it confirms the credit never landed
+                DEBIT_FAILED,        // it confirms the debit never landed
+                DEBITED,             // debit landed; carry on with the credit leg
+                UNCERTAIN,           // could not reach it; try again later
+                MANUAL_REVIEW));     // out of attempts, or contradictory answers
 
-        ALLOWED_TRANSITIONS.put(TransactionStatus.CREDITED,
-                EnumSet.of(TransactionStatus.COMPLETED));
-
-        ALLOWED_TRANSITIONS.put(TransactionStatus.CREDIT_FAILED,
-                EnumSet.of(TransactionStatus.REVERSAL_INITIATED));
-
-        ALLOWED_TRANSITIONS.put(TransactionStatus.REVERSAL_INITIATED,
-                EnumSet.of(TransactionStatus.REVERSED,
-                        TransactionStatus.FAILED));
-
-        //Terminal states - no outgoing Transitions
-        ALLOWED_TRANSITIONS.put(TransactionStatus.COMPLETED,
-                EnumSet.noneOf(TransactionStatus.class));
-
-        ALLOWED_TRANSITIONS.put(TransactionStatus.DEBIT_FAILED,
-                EnumSet.noneOf(TransactionStatus.class));
-
-        ALLOWED_TRANSITIONS.put(TransactionStatus.REVERSED,
-                EnumSet.noneOf(TransactionStatus.class));
-
-        ALLOWED_TRANSITIONS.put(TransactionStatus.FAILED,
-                EnumSet.noneOf(TransactionStatus.class));
+        // ── Terminal ──────────────────────────────────────────────────────
+        ALLOWED.put(COMPLETED,     EnumSet.noneOf(TransactionStatus.class));
+        ALLOWED.put(DEBIT_FAILED,  EnumSet.noneOf(TransactionStatus.class));
+        ALLOWED.put(REVERSED,      EnumSet.noneOf(TransactionStatus.class));
+        ALLOWED.put(FAILED,        EnumSet.noneOf(TransactionStatus.class));
+        ALLOWED.put(MANUAL_REVIEW, EnumSet.noneOf(TransactionStatus.class));
     }
-        /*
-        * validate and execute a state transition.
-        * Guard Condition --> FromState must be in ALLOWED_TRANSITIONS
-        * toState must be in the allowed-next sey for fromState
-        *
-        * TC --> O(1)
-        * */
 
-        public void transition(TransactionStatus from, TransactionStatus to)
-        {
-            Set<TransactionStatus> allowed = ALLOWED_TRANSITIONS.get(from);
-
-            if(allowed == null || !allowed.contains(to))
-            {
-                throw new InvalidStateTransitionException(
-                        String.format("Invalid transition: %s → %s", from, to));
-            }
+    /**
+     * Assert that {@code from -> to} is legal. Throws otherwise.
+     * O(1). Called before every single state assignment in the system.
+     */
+    public void transition(TransactionStatus from, TransactionStatus to) {
+        Set<TransactionStatus> allowed = ALLOWED.get(from);
+        if (allowed == null || !allowed.contains(to)) {
+            throw new InvalidStateTransitionException(
+                    String.format("Invalid transition: %s -> %s (allowed from %s: %s)",
+                            from, to, from, allowed));
         }
+    }
 
-        //Check if a state is terminal (no further transitions possible)
-        public boolean isTerminal(TransactionStatus state)
-        {
-            Set<TransactionStatus> next = ALLOWED_TRANSITIONS.get(state);
-            return next == null || next.isEmpty();
-        }
+    /** True if {@code from -> to} is legal, without throwing. */
+    public boolean canTransition(TransactionStatus from, TransactionStatus to) {
+        Set<TransactionStatus> allowed = ALLOWED.get(from);
+        return allowed != null && allowed.contains(to);
+    }
 
-        //Get all valid next states for a Given state (For Docs and UI)
-        public Set<TransactionStatus> getAllowedNextStates(TransactionStatus from)
-        {
-            return ALLOWED_TRANSITIONS.getOrDefault(from,
-                    EnumSet.noneOf(TransactionStatus.class));
-        }
+    /** A state with no outgoing edges. The payment is finished, either way. */
+    public boolean isTerminal(TransactionStatus state) {
+        Set<TransactionStatus> next = ALLOWED.get(state);
+        return next == null || next.isEmpty();
+    }
+
+    /** Exposed for the API and the showcase, so the UI never hard-codes the graph. */
+    public Set<TransactionStatus> getAllowedNextStates(TransactionStatus from) {
+        return ALLOWED.getOrDefault(from, EnumSet.noneOf(TransactionStatus.class));
+    }
 }
