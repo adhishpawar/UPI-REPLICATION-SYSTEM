@@ -4,10 +4,11 @@
 > This is the file that makes sessions resumable. If it disagrees with the
 > code, the code wins and this file is wrong — fix it immediately.
 
-**Last reconciled against code:** 2026-08-19 (end of sprint 1)
+**Last reconciled against code:** 2026-08-20 (sprint 1 + authentication)
 **Branch:** `claude/upi-platform-architecture-b5da56`
-**Current phase:** M0–M8 complete. A payment moves money end to end, and an
-uncertain payment repairs itself.
+**Current phase:** M0–M8 complete, plus M11 (real authentication). A payment
+moves money end to end, an uncertain payment repairs itself, and the API can no
+longer be driven by an unauthenticated caller.
 
 ## Legend
 
@@ -60,7 +61,7 @@ uncertain payment repairs itself.
 | **Reject spending from a VPA you do not own** | **yes** | 403 `VPA_NOT_OWNED` |
 | **Hide another user's transaction** | **yes** | 404 |
 
-### Verified run (2026-08-19)
+### Verified run (2026-08-20)
 
 ```
 [1] Authentication
@@ -87,7 +88,7 @@ PASS: 10   FAIL: 0
 | Test | Kind | Count |
 |---|---|---|
 | `TransactionStateMachineTest` | unit, graph invariants | **14, all passing** |
-| `JwtTokenProviderTest` | unit | pre-existing |
+| `JwtTokenProviderTest` | unit | **5, all passing** — did not compile before |
 | `scripts/smoke-test.sh` | end-to-end shell | happy path, idempotency, recovery, ledger |
 | context-load stubs | generated | 5 |
 
@@ -102,7 +103,7 @@ simultaneous payments on one account, and a property test asserting
 #    createdb -U postgres payment_db
 #    bash scripts/generate-psp-keys.sh     # RSA keypair, gitignored, once
 
-# 2. Three backend services, each in its own terminal
+# 2. Four backend services, each in its own terminal
 cd vpa-service          && ./mvnw -o -DskipTests spring-boot:run    # :8081
 cd psp-service          && ./mvnw -o -DskipTests spring-boot:run    # :8082
 cd bank-service         && ./mvnw -o -DskipTests spring-boot:run    # :8084

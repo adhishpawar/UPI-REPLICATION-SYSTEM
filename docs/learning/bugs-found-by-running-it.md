@@ -1,9 +1,13 @@
 # Bugs the System Found in Itself
 
-> Five defects surfaced during the first sprint, each only once the platform
-> was actually running and moving money. They are recorded here because the
-> *mechanism* of each is more instructive than the fix, and because four of the
-> five would have been invisible in a code review.
+> Eight defects surfaced while building this platform, each only once something
+> actually depended on the code in question. They are recorded because the
+> *mechanism* of each is more instructive than the fix, and because most would
+> have been invisible in a code review.
+>
+> They fall into two families. **1-5** are models that could not express a
+> distinction, found by moving real money through real failures. **6-8** are
+> claims nothing had ever checked, found by making something depend on them.
 
 ---
 
@@ -165,9 +169,138 @@ thought of yet; an example-based test only protects the paths someone
 remembered. And the best fix is not handling a bug but making it
 **unrepresentable**.
 
+
 ---
 
-## What these have in common
+## 6. An authentication mechanism that had never once worked
+
+**Found by:** trying to use it.
+
+Turning on real JWT validation meant psp-service finally had to serve its public
+key. Four separate defects sat in that path, and none had ever been exercised:
+
+1. **The service could not start from a clean clone.** Its RSA keys are
+   gitignored -- correct, a private signing key must never be committed -- but
+   nothing could regenerate them. `FileNotFoundException` at bean creation.
+2. **Its only test did not compile**, declaring the field as `SecurityConfig`
+   instead of `JwtTokenProvider`. And because `spring-boot:run` runs
+   test-compile first, that broken test *prevented the service from starting at
+   all*.
+3. **The JWKS endpoint returned 403.** The security rule permitted
+   `/.well-known/jwks.json`; the controller served it under its class-level
+   prefix at `/api/v1/auth/.well-known/jwks.json`. The real URL fell through to
+   `.anyRequest().authenticated()` -- so the endpoint that exists precisely so
+   callers need *no* credentials required credentials.
+4. **Then it returned 500.** The handler declared
+   `@Autowired RSAPublicKey publicKey` as a **method parameter**. `@Autowired`
+   means nothing there; Spring MVC treated it as something to bind from the
+   request, found nothing, and failed.
+
+**Why it matters.** Every piece looked right in isolation. There was a JWKS
+endpoint, a key config, a token provider, and a test. Read the file listing and
+the auth story is complete. Run it and *none* of it worked, because nothing had
+ever called it end to end -- the orchestrator was using an `X-User-Id` header
+instead.
+
+**Lesson.** Unexercised code is not "working code that isn't used yet"; its
+state is simply *unknown*, and the accumulated defects tend to be dense. These
+four had co-existed happily for months. One integration test that fetched the
+JWK Set and verified a token would have caught all four on day one.
+
+There is a sharper version of this. Gitignoring a private key is correct and was
+done correctly -- but "secrets are not in the repository" is only half a secrets
+strategy. The other half is a documented, repeatable way to obtain them, and
+without it the service was unbootable. A control implemented half-way can be
+worse than none, because the half that exists creates the impression the whole
+thing does.
+
+---
+
+## 7. A comment that described security the code did not have
+
+**Found by:** reading, then checking.
+
+`VpaMapper` had this, under a column comment reading "Stored AES-256 encrypted":
+
+```java
+private String encrypt(String accountNumber) {
+    return Base64.getEncoder().encodeToString(accountNumber.getBytes());
+}
+```
+
+Base64 is an *encoding*. It is publicly reversible, takes no key, and provides
+precisely zero confidentiality. Anyone with read access to the table had every
+account number.
+
+**Why it matters more than the weakness itself.** The method was named
+`encrypt`, the schema said AES-256, and a `// For Production: replace with
+AES-256` comment sat directly above the line that did not. Someone auditing this
+system would tick "account numbers encrypted at rest" and move on. **A security
+control that is documented but absent is more dangerous than one known to be
+missing, because nobody goes looking for it.**
+
+**Fix.** Real AES-256-GCM. GCM specifically because it is *authenticated*:
+tampering with a stored ciphertext is detected rather than silently decrypting
+to some other value. For a field that determines where money goes, integrity
+matters as much as confidentiality -- an attacker who can flip bits in an
+account number does not need to read it.
+
+Stored values carry a `v1:` prefix so existing Base64 rows remain readable. A
+hard cutover would have made every existing VPA unresolvable and every payment
+to an existing payee fail: technically a security improvement, operationally an
+outage.
+
+**Lesson.** Comments are not tested. Where a comment claims a property, either
+verify it or write down that it is aspirational. And when replacing a format in
+a live table, version the data before you need to.
+
+---
+
+## 8. A check that could not have worked until identity was real
+
+**Found by:** implementing authentication and noticing what it enabled.
+
+Nothing verified that the payer's VPA belonged to the caller. Any user could
+initiate a payment from any VPA they could name.
+
+The interesting part is *why the fix was not available earlier*. The check is
+one line:
+
+```java
+if (!payer.getUserId().equals(userId)) throw new VpaOwnershipException(...);
+```
+
+But while `userId` came from an `X-User-Id` header the caller supplied, that
+line compares a **claim** against a **fact** -- an attacker simply sends the
+VPA owner's id and the check passes. It would have looked like a security
+control and rejected nothing.
+
+**Lesson.** Authorization is downstream of authentication, and not merely in
+execution order. Ownership checks written on top of unverified identity are
+theatre: they add code, pass review, and protect nothing. Getting authentication
+right did not just close one hole -- it made a whole category of check
+*possible*.
+
+---
+
+## What findings 6-8 have in common
+
+The later findings have a different shape from the first five. Those were models
+that could not express a distinction. These are **claims that were never
+checked**:
+
+- a JWKS endpoint that existed but had never been called
+- a test that counted as coverage but did not compile
+- a method named `encrypt` that encrypted nothing
+- an ownership check that could not have worked
+
+Each looked correct in the file listing. Each was false the moment something
+actually depended on it. The defence is the same in all four cases: make
+something *use* it, end to end, and watch what happens.
+
+---
+
+## What findings 1-5 have in common
 
 Four of the five were invisible in the code and only appeared when real money
 moved through a real failure. Three of them share one root shape:
