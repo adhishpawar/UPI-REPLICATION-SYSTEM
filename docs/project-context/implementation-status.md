@@ -89,6 +89,7 @@ PASS: 10   FAIL: 0
 |---|---|---|
 | `TransactionStateMachineTest` | unit, graph invariants | **14, all passing** |
 | `JwtTokenProviderTest` | unit | **5, all passing** — did not compile before |
+| `scripts/verify.ps1` | end-to-end, PowerShell | **10 checks, all passing** — auth, ownership, 3 scenarios, idempotency, cross-user read |
 | `scripts/smoke-test.sh` | end-to-end shell | happy path, idempotency, recovery, ledger |
 | context-load stubs | generated | 5 |
 
@@ -98,23 +99,36 @@ simultaneous payments on one account, and a property test asserting
 
 ## How to run everything
 
-```bash
-# 1. PostgreSQL 17 on :5432 (postgres/root) must be running.
-#    createdb -U postgres payment_db
-#    bash scripts/generate-psp-keys.sh     # RSA keypair, gitignored, once
+PowerShell (the shell this is developed in):
 
-# 2. Four backend services, each in its own terminal
+```powershell
+createdb -U postgres payment_db
+.\scripts\generate-psp-keys.ps1
+.\scripts\start-all.ps1 -Wait
+.\scripts\seed-demo-data.ps1
+.\scripts\verify.ps1 -PayerVpa <printed> -PayeeVpa <printed> `
+    -PayerAcc <printed> -PayeeAcc <printed> `
+    -Mobile <printed> -Device <printed>
+```
+
+bash:
+
+```bash
+createdb -U postgres payment_db
+bash scripts/generate-psp-keys.sh
+
 cd vpa-service          && ./mvnw -o -DskipTests spring-boot:run    # :8081
 cd psp-service          && ./mvnw -o -DskipTests spring-boot:run    # :8082
 cd bank-service         && ./mvnw -o -DskipTests spring-boot:run    # :8084
 cd paymentOrchestrator  && ./mvnw -o -DskipTests spring-boot:run    # :8083
 
-# 3. Seed a payer and payee
 bash scripts/seed-demo-data.sh
-
-# 4. The showcase
 bash backend-showcase/run.sh                                        # :8090
 ```
+
+**Windows note:** `bash` on the PATH is usually WSL's, which fails with
+`execvpe(/bin/bash)` when no distro is installed. Use the `.ps1` scripts, or
+invoke Git Bash by full path.
 
 Note: `paymentOrchestrator` needs one **online** Maven run the first time
 (`./mvnw -DskipTests spring-boot:run`) — the local repository is missing

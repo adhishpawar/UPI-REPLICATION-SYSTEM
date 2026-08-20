@@ -65,17 +65,32 @@ and refuses what it should:
 ## Running it
 
 **Requires:** JDK 21, PostgreSQL 17 on `:5432` (`postgres`/`root`).
-**Does not require:** Kafka, Docker, or Node.
+**Does not require:** Kafka, Docker, Node, or openssl.
 
-```bash
-createdb -U postgres payment_db          # once
-bash scripts/generate-psp-keys.sh        # once — RSA keypair for signing JWTs
+Every script exists in both PowerShell (`.ps1`) and bash (`.sh`) form and does
+the same thing. Use whichever shell you are in.
+
+### Windows / PowerShell
+
+```powershell
+createdb -U postgres payment_db
+.\scripts\generate-psp-keys.ps1     # RSA keypair for signing JWTs, once
+.\scripts\start-all.ps1 -Wait       # four services + the showcase
+.\scripts\seed-demo-data.ps1        # a payer, a payee, a funded account
+.\scripts\verify.ps1 -PayerVpa ... # prove the money invariants hold
 ```
 
-The keys are gitignored, as a private signing key should be. The script is how
-you get them; without it psp-service cannot start.
+`start-all.ps1` opens one window per service so each keeps its own log. To run
+them by hand instead, see the four `mvnw` commands below.
 
-Four services, each in its own terminal:
+### macOS / Linux / Git Bash
+
+```bash
+createdb -U postgres payment_db
+bash scripts/generate-psp-keys.sh
+bash scripts/seed-demo-data.sh
+bash backend-showcase/run.sh          # http://localhost:8090
+```
 
 ```bash
 cd vpa-service         && ./mvnw -o -DskipTests spring-boot:run   # :8081
@@ -84,18 +99,21 @@ cd paymentOrchestrator && ./mvnw    -DskipTests spring-boot:run   # :8083  (firs
 cd bank-service        && ./mvnw -o -DskipTests spring-boot:run   # :8084
 ```
 
-Seed two registered users with VPAs and a funded account, then open the showcase:
+> On Windows, `bash` on the PATH is usually **WSL's** bash, which fails with
+> `execvpe(/bin/bash)` if no distro is installed. Use the PowerShell scripts, or
+> call Git Bash explicitly:
+> `& "C:\Program Files\Git\bin\bash.exe" scripts/generate-psp-keys.sh`
 
-```bash
-bash scripts/seed-demo-data.sh
-bash backend-showcase/run.sh             # http://localhost:8090
-```
+### Then
 
-The seed script prints a mobile number, device id and MPIN. Sign in with them in
-the showcase, paste the printed VPAs, pick a scenario, press Run.
+The signing keys are gitignored, as a private key should be — the script is how
+you get them, and psp-service cannot start without them.
+
+The seed script prints a mobile number, device id and MPIN. Sign in with those
+in the showcase, paste the printed VPAs, pick a scenario, press Run.
 
 The sign-in is not decoration: the payment API rejects an unauthenticated call
-with 401, and rejects a payment from a VPA you do not own with 403.
+with 401, and a payment from a VPA you do not own with 403.
 
 ---
 
@@ -108,7 +126,7 @@ with 401, and rejects a payment from a VPA you do not own with 403.
 | `vpa-service/` | VPA directory |
 | `psp-service/` | identity, MPIN, RS256 tokens, JWK Set |
 | `backend-showcase/` | independent visualiser. Static HTML/JS. **Delete it and nothing breaks.** |
-| `scripts/` | seed and smoke-test |
+| `scripts/` | bootstrap, seed and verify — `.ps1` and `.sh` twins |
 | `docs/` | architecture, decisions, gaps, failure spec — **start at `docs/README.md`** |
 | `user-service/` | superseded by `psp-service`; frozen, not in the topology |
 
