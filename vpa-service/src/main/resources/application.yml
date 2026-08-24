@@ -33,6 +33,20 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
+# ── At-rest encryption for account numbers ─────────────────────────────────
+# AES-256-GCM. Generate a key with:  openssl rand -base64 32
+#
+# The value below is a LOCAL DEVELOPMENT DEFAULT and is committed to the
+# repository, which means it is not a secret. That is acceptable only because
+# this database holds invented account numbers. In any real deployment the key
+# comes from a KMS or secret manager, is never written to disk, and is rotated
+# on a schedule -- override it with the VPA_ENCRYPTION_KEY environment
+# variable. The service refuses to start if no key is configured rather than
+# silently storing account numbers in the clear.
+vpa:
+  encryption:
+    key: ${VPA_ENCRYPTION_KEY:tW8pQ2sVx5nR7yLmB4kE1jZaC6dH0gFuI3oNvXrPqSc=}
+
 server:
   port: 8081
   servlet:

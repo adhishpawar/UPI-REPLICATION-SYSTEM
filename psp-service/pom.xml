@@ -153,10 +153,12 @@
 			<version>${testcontainers.version}</version>
 			<scope>test</scope>
 		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-data-redis</artifactId>
-		</dependency>
+		<!-- spring-boot-starter-data-redis was declared here but nothing in this
+		     service used it. Spring Boot still auto-configured a connection
+		     factory and a health indicator, which failed against a Redis that
+		     is not running: a stack trace every few seconds and a DOWN health
+		     status for a dependency the service does not have. An unused
+		     dependency is not free. -->
 
 	</dependencies>
 	<dependencyManagement>

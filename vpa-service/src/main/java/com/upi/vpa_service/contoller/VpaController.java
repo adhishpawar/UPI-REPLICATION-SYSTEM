@@ -44,6 +44,25 @@ public class VpaController {
         return vpaService.resolveVpa(vpaAddress.toLowerCase().trim());
     }
 
+    /**
+     * Internal: resolve a VPA to its bank account.
+     *
+     * <p>Separate from the public resolve endpoint, which returns only the
+     * account holder's name. Payment services need the account number; payers'
+     * apps must not be able to obtain it, or anyone who can guess a VPA could
+     * enumerate account numbers.
+     *
+     * <p>Not authenticated yet -- no service-to-service auth exists in this
+     * platform. In a real deployment this sits behind mutual TLS or a service
+     * token.
+     */
+    @GetMapping("/{vpaAddress}/account")
+    @Operation(summary = "[internal] Resolve a VPA to full account details")
+    public com.upi.vpa_service.domain.dto.VpaAccountResponse resolveAccount(
+            @PathVariable String vpaAddress) {
+        return vpaService.resolveAccount(vpaAddress.toLowerCase().trim());
+    }
+
     @DeleteMapping("/{vpaAddress}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Deactivate A VPA (soft delete)")

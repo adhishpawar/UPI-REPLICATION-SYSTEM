@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UPI Backend Execution Center</title>
+<link rel="stylesheet" href="showcase.css">
+</head>
+<body>
+
+<!--
+  BACKEND SHOWCASE
+  ================
+  A developer-facing window into the payment backend. Not a product UI, and
+  not the future core frontend.
+
+  Everything on this page is driven by ExecutionEvent rows the backend wrote
+  while doing real work, streamed over SSE. There is no scripted animation and
+  no fabricated timing: if the backend is stopped, this page goes quiet.
+
+  Coupling is one-directional and minimal:
+    - it calls the public REST API
+    - it subscribes to /api/v1/execution/stream
+    - it imports nothing from the backend and reads no database
+  Delete this folder and the backend is unaffected.
+-->
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">UPI</span>
+    <div>
+      <h1>Backend Execution Center</h1>
+      <p class="sub">Live view of a Spring Boot payment platform</p>
+    </div>
+  </div>
+  <div class="conn">
+    <span id="dot" class="dot"></span>
+    <span id="connText">connecting…</span>
+    <span class="sep"></span>
+    <span class="metric">outbox&nbsp;<b id="outboxPending">–</b></span>
+    <span class="metric">recovery&nbsp;<b id="openCases">–</b></span>
+  </div>
+</header>
+
+<section class="controls">
+  <div class="scenarios">
+    <button class="scn" data-scn="happy">
+      <span class="scn-title">User Payment</span>
+      <span class="scn-desc">A → B, happy path</span>
+    </button>
+    <button class="scn" data-scn="timeout_credit">
+      <span class="scn-title">Failure &amp; Self-Healing</span>
+      <span class="scn-desc">credit times out, outcome unknown</span>
+    </button>
+    <button class="scn" data-scn="reject_credit">
+      <span class="scn-title">Compensation</span>
+      <span class="scn-desc">credit refused → reversal</span>
+    </button>
+    <button class="scn" data-scn="wallet" disabled title="Not implemented">
+      <span class="scn-title">Wallet Payment</span>
+      <span class="scn-desc">port exists, impl does not</span>
+    </button>
+  </div>
+
+  <div class="cfg">
+    <label>payer <input id="payerVpa" size="18" placeholder="arjun@okaxis"></label>
+    <label>payee <input id="payeeVpa" size="18" placeholder="priya@okaxis"></label>
+    <label>₹ <input id="amount" size="6" value="250.00"></label>
+    <button id="run" class="run" disabled title="Sign in first">Run</button>
+  </div>
+</section>
+
+<!--
+  Sign-in.
+  The backend now verifies an RS256 token issued by psp-service, so the
+  showcase can no longer simply assert who it is. It logs in like any other
+  client and carries the bearer token. This panel exists because the auth is
+  real, not to decorate the demo.
+-->
+<section class="auth" id="authPanel">
+  <div class="auth-row">
+    <span class="auth-label">Sign in</span>
+    <label>mobile <input id="mobile" size="16" placeholder="+919812300001"></label>
+    <label>device <input id="device" size="20" placeholder="demo-device-payer-1234"></label>
+    <label>MPIN <input id="mpin" size="6" type="password" value="1234"></label>
+    <button id="login" class="run">Sign in</button>
+    <span id="authState" class="auth-state">not signed in</span>
+  </div>
+  <p class="hint">Credentials are printed by <code>scripts/seed-demo-data.sh</code>. The token is
+     verified locally by the orchestrator against psp-service's published JWK Set — no shared secret,
+     and no call to psp on the payment path.</p>
+</section>
+
+<div id="banner" class="banner hidden"></div>
+
+<main>
+  <!-- ── Row 1: the flow, and the state machine ───────────────────────── -->
+  <section class="panel flow-panel">
+    <h2>Execution flow</h2>
+    <div id="flow" class="flow"></div>
+    <p class="hint">Nodes activate as the backend actually reaches them. Latency is measured, not simulated.</p>
+  </section>
+
+  <section class="panel state-panel">
+    <h2>Transaction state</h2>
+    <div class="txnmeta">
+      <div><span>txn</span><b id="mTxn">–</b></div>
+      <div><span>rrn</span><b id="mRrn">–</b></div>
+      <div><span>trace</span><b id="mTrace">–</b></div>
+      <div><span>idempotency key</span><b id="mKey">–</b></div>
+    </div>
+    <ol id="states" class="states"></ol>
+  </section>
+
+  <!-- ── Row 2: service calls ─────────────────────────────────────────── -->
+  <section class="panel calls-panel">
+    <h2>Service calls &amp; events</h2>
+    <div class="tablewrap">
+      <table id="calls">
+        <thead>
+          <tr><th>#</th><th>component</th><th>kind</th><th>operation</th><th>status</th><th class="num">latency</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Row 3: the log ───────────────────────────────────────────────── -->
+  <section class="panel log-panel">
+    <h2>Live execution log</h2>
+    <div id="log" class="log"></div>
+  </section>
+</main>
+
+<footer>
+  <span>Backend: <code id="apiBase"></code></span>
+  <span>This page renders <code>execution_events</code> rows written by the backend. Nothing here is scripted.</span>
+</footer>
+
+<script src="showcase.js"></script>
+</body>
+</html>

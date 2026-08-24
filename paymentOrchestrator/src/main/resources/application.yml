@@ -1,0 +1,160 @@
+# Payment Orchestrator — runtime configuration
+#
+# Port 8083 per UPI_Implementation_Master_Plan.docx §2.1.
+# Topology:  vpa-service 8081 · psp-service 8082 · THIS 8083 · bank-service 8084
+#
+# Schema authority is Flyway, and only Flyway. `ddl-auto: validate` means
+# Hibernate checks that the entities match the migrated schema and refuses to
+# start if they do not. It never issues DDL. For anything holding money the
+# schema must be a reviewed, versioned artefact — never a side effect of an
+# entity class.
+
+spring:
+  application:
+    name: payment-orchestrator
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/payment_db
+    username: postgres
+    password: root
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: PaymentOrchestratorPool
+      maximum-pool-size: 15
+      minimum-idle: 3
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false          # never hold a DB connection for view rendering
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  # Kafka is declared but DISABLED. See ADR-0001: the outbox relay delivers
+  # in-process today and switches to Kafka by changing `outbox.relay.sink`.
+  kafka:
+    bootstrap-servers: localhost:9092
+    listener:
+      auto-startup: false        # do not attempt to connect to a broker that is down
+
+server:
+  port: 8083
+  error:
+    include-message: always
+
+# ── Authentication ─────────────────────────────────────────────────────────
+# Tokens are verified locally against psp-service's published public key.
+# There is no call to psp on the request path, and no shared secret: this
+# service holds only the public half and could not mint a token if it tried.
+security:
+  jwt:
+    jwk-set-uri: http://localhost:8082/api/v1/auth/.well-known/jwks.json
+    issuer: upi-psp-service
+
+# ── Downstream services ────────────────────────────────────────────────────
+services:
+  vpa:
+    base-url: http://localhost:8081
+  bank:
+    base-url: http://localhost:8084
+
+# ── Outbox / messaging substrate (ADR-0001) ────────────────────────────────
+outbox:
+  relay:
+    sink: in-process             # in-process | kafka
+    poll-interval-ms: 200
+    batch-size: 50
+    max-attempts: 10
+
+# ── Saga timeouts — the thresholds that create UNCERTAIN ───────────────────
+# A funds command with no reply within this window is NOT a failure. It is an
+# unknown outcome, and must be reconciled rather than retried or reversed.
+payment:
+  timeout:
+    debit-seconds: 10
+    credit-seconds: 10
+
+# ── Self-healing ───────────────────────────────────────────────────────────
+recovery:
+  detector:
+    interval-ms: 2000            # how often we sweep for stalled transactions
+  reconcile:
+    max-attempts: 5
+    backoff-ms: 1000
+  lease-seconds: 30              # claim lease so two sweeps cannot both act
+
+# ── Demo-only failure injection (M5) ───────────────────────────────────────
+# Deterministic and explicit. Never random, never active unless a scenario is
+# named on the request. See docs/testing/failure-scenarios.md.
+demo:
+  failure-injection:
+    enabled: true
+
+# ── Showcase ───────────────────────────────────────────────────────────────
+showcase:
+  allowed-origins: "http://localhost:8090,http://127.0.0.1:8090,http://localhost:9000"
+
+# ── Resilience4j ───────────────────────────────────────────────────────────
+resilience4j:
+  circuitbreaker:
+    instances:
+      vpa-service:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+      bank-service:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 20s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+  retry:
+    instances:
+      vpa-service:
+        # Safe to retry: VPA resolution is a read with no side effect.
+        max-attempts: 3
+        wait-duration: 500ms
+        exponential-backoff-multiplier: 2
+      # NOTE: there is deliberately NO retry instance for funds movement.
+      # Blindly retrying a debit or credit whose outcome is unknown is how
+      # money gets created. Unknown outcomes go to UNCERTAIN and are
+      # reconciled instead. See docs/testing/failure-scenarios.md scenario C.
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+
+logging:
+  level:
+    com.upi.payment: DEBUG
+    org.springframework: INFO
+    org.hibernate.SQL: WARN
+    org.flywaydb: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{traceId:-}] %logger{28} - %msg%n"

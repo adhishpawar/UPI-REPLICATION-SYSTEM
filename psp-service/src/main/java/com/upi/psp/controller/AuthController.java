@@ -11,7 +11,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +28,20 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+
+    /**
+     * The RSA public key, injected as a constructor dependency.
+     *
+     * <p>It used to be declared as {@code @Autowired RSAPublicKey publicKey}
+     * on the handler <em>method</em>. That is not dependency injection:
+     * {@code @Autowired} has no meaning on a controller method parameter, so
+     * Spring MVC treated it as something to bind from the request, found
+     * nothing, and the endpoint returned 500. The JWKS endpoint -- the whole
+     * mechanism by which other services verify tokens -- had never worked.
+     *
+     * <p>{@code @RequiredArgsConstructor} picks this up because it is final.
+     */
+    private final RSAPublicKey publicKey;
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
@@ -74,8 +87,7 @@ public class AuthController {
     // Expose RSA public key as JWK Set — used by other services for token verification
     @GetMapping(value = "/.well-known/jwks.json", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Get RSA public key in JWK format")
-    public Map<String, Object> getJwks(
-            @Autowired RSAPublicKey publicKey) {
+    public Map<String, Object> getJwks() {
         // Build JWK (JSON Web Key) representation of the RSA public key
         // Other services use this to independently validate JWTs
         RSAKey jwk = new RSAKey.Builder(publicKey)
